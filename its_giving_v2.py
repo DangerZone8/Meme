@@ -99,7 +99,16 @@ def ensure_models():
 
 
 def preflight(model_path):
-    """Open a detector in a throwaway subprocess: bad macOS builds abort() uncatchably."""
+    """Preflight native MediaPipe startup when running from a real Python interpreter.
+
+    In a PyInstaller-frozen Windows app, sys.executable points to ItsGiving.exe,
+    not python.exe. Spawning it with ``-c`` would relaunch this app with invalid
+    arguments and make startup fail before the webcam preview appears. The
+    packaged app initializes its real detectors immediately afterward, so skip
+    only this interpreter-specific subprocess probe when frozen.
+    """
+    if getattr(sys, "frozen", False):
+        return
     code = (
         "import sys\n"
         "from mediapipe.tasks import python as t\n"
