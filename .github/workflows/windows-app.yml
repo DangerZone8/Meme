@@ -59,9 +59,19 @@ jobs:
       - name: Build Windows installer
         run: iscc installer/its_giving.iss
 
-      - name: Verify packaged app and installer
+      - name: Install app silently for verification
+        shell: pwsh
         run: |
-          python scripts/verify_windows_package.py --app-dir dist/ItsGiving --installer dist/installer/ItsGiving-Setup.exe
+          $installer = (Resolve-Path "dist/installer/ItsGiving-Setup.exe").Path
+          $process = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Silent installer exited with code $($process.ExitCode)." }
+          $installedExe = Join-Path $env:LOCALAPPDATA "Programs/ItsGiving/ItsGiving.exe"
+          if (!(Test-Path $installedExe)) { throw "Installer completed but installed executable was not found at $installedExe" }
+
+      - name: Verify packaged, installed app and installer
+        shell: pwsh
+        run: |
+          python scripts/verify_windows_package.py --app-dir dist/ItsGiving --installer dist/installer/ItsGiving-Setup.exe --installed-dir "$env:LOCALAPPDATA/Programs/ItsGiving"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
