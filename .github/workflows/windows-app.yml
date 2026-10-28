@@ -1,0 +1,74 @@
+name: Windows app CI and installer
+
+on:
+  push:
+    branches: [main, "feature/**", "fix/**"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows installable app
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install app dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller>=6.10,<7"
+
+      - name: Check Python syntax
+        run: |
+          python -m py_compile its_giving.py its_giving_v2.py
+
+      - name: Verify dependency consistency
+        run: python -m pip check
+
+      - name: Build distributable application folder
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onedir --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" its_giving_v2.py
+          if (!(Test-Path "dist/ItsGiving/ItsGiving.exe")) { throw "Packaged executable was not created." }
+
+      - name: Smoke-test packaged executable
+        shell: pwsh
+        run: |
+          & "dist/ItsGiving/ItsGiving.exe" --help
+          if ($LASTEXITCODE -ne 0) { throw "Packaged app smoke test failed." }
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        run: iscc installer/its_giving.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ItsGiving-Windows-Installer
+          path: dist/installer/ItsGiving-Setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish installer to GitHub Release for version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/installer/ItsGiving-Setup.exe
+          generate_release_notes: true
