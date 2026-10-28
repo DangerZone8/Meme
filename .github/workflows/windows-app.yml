@@ -50,11 +50,12 @@ jobs:
           if (!(Test-Path "index.html")) { throw "Vercel landing page index.html is missing." }
           if (!(Test-Path "vercel.json")) { throw "Vercel configuration vercel.json is missing." }
           $config = Get-Content "vercel.json" -Raw | ConvertFrom-Json
-          if ($config.redirects.Count -lt 1 -or $config.redirects[0].source -ne "/download") { throw "Vercel /download route is not configured." }
-          if ($config.redirects[0].destination -ne "https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Setup.exe") { throw "Vercel /download must point to the latest published Windows installer." }
+          if ($config.rewrites.Count -lt 1 -or $config.rewrites[0].source -ne "/download" -or $config.rewrites[0].destination -ne "/api/download") { throw "Vercel /download must route through the website's /api/download handler." }
+          if (!(Test-Path "api/download.js")) { throw "Vercel download proxy api/download.js is missing." }
+          if (!(Test-Path "scripts/publish_vercel_installer.mjs")) { throw "Vercel Blob upload script is missing." }
           $page = Get-Content "index.html" -Raw
           if ($page -notmatch 'href="/download"') { throw "Landing page does not link to /download." }
-          Write-Output "PASS: Vercel landing page and Windows download route are configured."
+          Write-Output "PASS: Vercel landing page, same-domain download route, and Blob uploader are configured."
 
       - name: Build distributable application folder
         shell: pwsh
@@ -92,6 +93,26 @@ jobs:
           path: dist/installer/ItsGiving-Setup.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Set up Node for Vercel Blob upload
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Publish installer to Vercel Blob
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BLOB_READ_WRITE_TOKEN)) { throw "Add BLOB_READ_WRITE_TOKEN to GitHub Actions secrets and connect a Vercel Blob store before publishing." }
+          npm install --no-package-lock --ignore-scripts
+          $output = node scripts/publish_vercel_installer.mjs dist/installer/ItsGiving-Setup.exe
+          $output | Write-Output
+          $line = $output | Where-Object { $_ -like "VERCEL_INSTALLER_URL=*" } | Select-Object -Last 1
+          if (!$line) { throw "Vercel Blob uploader did not return an installer URL." }
+          "vercel_installer_url=$($line.Substring('VERCEL_INSTALLER_URL='.Length))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Publish installer to GitHub Release for version tags
         if: startsWith(github.ref, 'refs/tags/v')
