@@ -28,6 +28,16 @@ guessed.
 
 ---
 
+## Install as a Windows app (no Python required)
+
+A GitHub Actions workflow builds a Windows installer from the calibrated v2 app. After the workflow succeeds, open the repository's **Actions** tab, select **Windows app CI and installer**, open the latest successful run, and download the `ItsGiving-Windows-Installer` artifact. Extract the artifact ZIP and run `ItsGiving-Setup.exe`. The installer creates a Start menu shortcut and can optionally create a desktop shortcut. It installs per-user, so administrator access is not required.
+
+The first launch downloads the MediaPipe model files and therefore needs an internet connection. Allow camera access when Windows prompts you. The app's preview and reaction detection can run without a virtual camera; the virtual camera is optional and may require a separately installed backend such as OBS.
+
+The workflow also attaches the installer to a GitHub Release when a version tag beginning with `v` is pushed. CI checks syntax, dependency consistency, builds the packaged executable, and runs a command-line smoke test. Webcam behavior still needs to be verified on a real computer with a camera.
+
+---
+
 ## Setup
 
 ```bash
