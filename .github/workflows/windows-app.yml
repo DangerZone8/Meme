@@ -92,7 +92,7 @@ jobs:
       - name: Upload versioned test installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ItsGiving-Test-v0.1.1-Windows
+          name: ItsGiving-Test-v0.1.2-Windows
           path: dist/installer/ItsGiving-Setup.exe
           if-no-files-found: error
           retention-days: 7
