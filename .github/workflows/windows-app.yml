@@ -1,4 +1,4 @@
-name: Windows app CI and private test build
+name: Windows app CI and test build
 
 concurrency:
   group: windows-app-${{ github.ref }}
@@ -48,11 +48,30 @@ jobs:
           $page = Get-Content "index.html" -Raw
           if ($page -notmatch 'href="/download"') { throw "Landing page does not link to /download." }
           Write-Output "PASS: website download route configuration."
+      - name: Bundle MediaPipe models for offline first launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path models | Out-Null
+          $models = @{
+            "face_landmarker.task" = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            "hand_landmarker.task" = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            "pose_landmarker_lite.task" = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+          }
+          foreach ($entry in $models.GetEnumerator()) {
+            Invoke-WebRequest -Uri $entry.Value -OutFile (Join-Path "models" $entry.Key)
+            $file = Get-Item (Join-Path "models" $entry.Key)
+            if ($file.Length -lt 100000) { throw "Model download is incomplete: $($entry.Key)" }
+            Write-Output "Bundled $($entry.Key) ($($file.Length) bytes)"
+          }
       - name: Build distributable application folder
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onedir --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" its_giving_v2.py
+          pyinstaller --noconfirm --clean --onedir --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
           if (!(Test-Path "dist/ItsGiving/ItsGiving.exe")) { throw "Packaged executable was not created." }
+          foreach ($model in @("face_landmarker.task", "hand_landmarker.task", "pose_landmarker_lite.task")) {
+            if (!(Test-Path (Join-Path "dist/ItsGiving/_internal/models" $model))) { throw "Packaged model missing: $model" }
+          }
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
       - name: Prepare installer output directory
@@ -73,7 +92,7 @@ jobs:
       - name: Upload versioned test installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ItsGiving-Test-v0.1.0-Windows
+          name: ItsGiving-Test-v0.1.1-Windows
           path: dist/installer/ItsGiving-Setup.exe
           if-no-files-found: error
           retention-days: 7
