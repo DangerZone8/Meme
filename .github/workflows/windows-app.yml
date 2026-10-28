@@ -44,6 +44,18 @@ jobs:
       - name: Verify dependency consistency
         run: python -m pip check
 
+      - name: Validate Vercel website and download route
+        shell: pwsh
+        run: |
+          if (!(Test-Path "index.html")) { throw "Vercel landing page index.html is missing." }
+          if (!(Test-Path "vercel.json")) { throw "Vercel configuration vercel.json is missing." }
+          $config = Get-Content "vercel.json" -Raw | ConvertFrom-Json
+          if ($config.redirects.Count -lt 1 -or $config.redirects[0].source -ne "/download") { throw "Vercel /download route is not configured." }
+          if ($config.redirects[0].destination -ne "https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Setup.exe") { throw "Vercel /download must point to the latest published Windows installer." }
+          $page = Get-Content "index.html" -Raw
+          if ($page -notmatch 'href="/download"') { throw "Landing page does not link to /download." }
+          Write-Output "PASS: Vercel landing page and Windows download route are configured."
+
       - name: Build distributable application folder
         shell: pwsh
         run: |
