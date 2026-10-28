@@ -1,5 +1,9 @@
 name: Windows app CI and installer
 
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, "feature/**", "fix/**"]
