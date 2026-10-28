@@ -39,7 +39,7 @@ jobs:
 
       - name: Check Python syntax
         run: |
-          python -m py_compile its_giving.py its_giving_v2.py
+          python -m py_compile its_giving.py its_giving_v2.py scripts/verify_windows_package.py
 
       - name: Verify dependency consistency
         run: python -m pip check
@@ -50,12 +50,6 @@ jobs:
           pyinstaller --noconfirm --clean --onedir --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" its_giving_v2.py
           if (!(Test-Path "dist/ItsGiving/ItsGiving.exe")) { throw "Packaged executable was not created." }
 
-      - name: Smoke-test packaged executable
-        shell: pwsh
-        run: |
-          & "dist/ItsGiving/ItsGiving.exe" --help
-          if ($LASTEXITCODE -ne 0) { throw "Packaged app smoke test failed." }
-
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
@@ -64,6 +58,10 @@ jobs:
 
       - name: Build Windows installer
         run: iscc installer/its_giving.iss
+
+      - name: Verify packaged app and installer
+        run: |
+          python scripts/verify_windows_package.py --app-dir dist/ItsGiving --installer dist/installer/ItsGiving-Setup.exe
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
