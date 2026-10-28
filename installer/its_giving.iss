@@ -1,5 +1,5 @@
 #define MyAppName "It's Giving"
-#define MyAppVersion "0.1.0-test"
+#define MyAppVersion "0.1.2-test"
 #define MyAppPublisher "DangerZone8"
 #define MyAppExeName "ItsGiving.exe"
 
