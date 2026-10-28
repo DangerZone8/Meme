@@ -55,6 +55,9 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Prepare installer output directory
+        run: New-Item -ItemType Directory -Force -Path dist/installer | Out-Null
+
       - name: Build Windows installer
         run: iscc installer/its_giving.iss
 
