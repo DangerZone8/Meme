@@ -82,7 +82,14 @@ MODELS = {
     "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "pose_landmarker_lite.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 }
-HERE = os.path.dirname(os.path.abspath(__file__))
+# PyInstaller extracts bundled read-only resources into _MEIPASS in one-file mode.
+RESOURCE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+HERE = RESOURCE_DIR
+if getattr(sys, "frozen", False):
+    USER_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ItsGiving")
+else:
+    USER_DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 
 def ensure_models():
@@ -602,7 +609,7 @@ def main():
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
     args = ap.parse_args()
 
-    calib_path = os.path.join(HERE, CALIB_FILE)
+    calib_path = os.path.join(USER_DATA_DIR, CALIB_FILE)
     base = Baseline() if args.no_calibration else Baseline.load(calib_path)
     if base.generic and not args.calibrate and not args.no_calibration:
         print(f"No usable {CALIB_FILE}. Running on the generic baseline — everything is harder to\n"
