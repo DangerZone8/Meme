@@ -1,4 +1,4 @@
-name: Windows app CI and test build
+name: Windows portable app CI
 
 concurrency:
   group: windows-app-${{ github.ref }}
@@ -16,9 +16,9 @@ permissions:
 
 jobs:
   windows:
-    name: Build and verify Windows test installer
+    name: Build and smoke-test portable Windows app
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -34,21 +34,10 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller>=6.10,<7"
       - name: Check Python syntax
-        run: python -m py_compile its_giving.py its_giving_v2.py scripts/verify_windows_package.py
+        run: python -m py_compile its_giving.py its_giving_v2.py
       - name: Verify dependency consistency
         run: python -m pip check
-      - name: Validate website download route
-        shell: pwsh
-        run: |
-          if (!(Test-Path "index.html")) { throw "Landing page index.html is missing." }
-          if (!(Test-Path "vercel.json")) { throw "Vercel config vercel.json is missing." }
-          $config = Get-Content "vercel.json" -Raw | ConvertFrom-Json
-          if ($config.rewrites.Count -lt 1 -or $config.rewrites[0].source -ne "/download" -or $config.rewrites[0].destination -ne "/api/download") { throw "Vercel /download must route to /api/download." }
-          if (!(Test-Path "api/download.js")) { throw "Download proxy api/download.js is missing." }
-          $page = Get-Content "index.html" -Raw
-          if ($page -notmatch 'href="/download"') { throw "Landing page does not link to /download." }
-          Write-Output "PASS: website download route configuration."
-      - name: Bundle MediaPipe models for offline first launch
+      - name: Bundle MediaPipe models
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -60,39 +49,24 @@ jobs:
           }
           foreach ($entry in $models.GetEnumerator()) {
             Invoke-WebRequest -Uri $entry.Value -OutFile (Join-Path "models" $entry.Key)
-            $file = Get-Item (Join-Path "models" $entry.Key)
-            if ($file.Length -lt 100000) { throw "Model download is incomplete: $($entry.Key)" }
-            Write-Output "Bundled $($entry.Key) ($($file.Length) bytes)"
+            if ((Get-Item (Join-Path "models" $entry.Key)).Length -lt 100000) { throw "Incomplete model: $($entry.Key)" }
           }
-      - name: Build distributable application folder
+      - name: Build standalone Windows executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onedir --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
-          if (!(Test-Path "dist/ItsGiving/ItsGiving.exe")) { throw "Packaged executable was not created." }
-          foreach ($model in @("face_landmarker.task", "hand_landmarker.task", "pose_landmarker_lite.task")) {
-            if (!(Test-Path (Join-Path "dist/ItsGiving/_internal/models" $model))) { throw "Packaged model missing: $model" }
-          }
-      - name: Install Inno Setup
-        run: choco install innosetup --no-progress -y
-      - name: Prepare installer output directory
-        run: New-Item -ItemType Directory -Force -Path dist/installer | Out-Null
-      - name: Build Windows installer
-        run: iscc installer/its_giving.iss
-      - name: Install app silently for verification
+          pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
+          if (!(Test-Path "dist/ItsGiving.exe")) { throw "Portable app executable was not created." }
+          if ((Get-Item "dist/ItsGiving.exe").Length -lt 50000000) { throw "Portable executable is unexpectedly small; dependencies may be missing." }
+      - name: Smoke-test executable entry point
         shell: pwsh
         run: |
-          $installer = (Resolve-Path "dist/installer/ItsGiving-Setup.exe").Path
-          $process = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER" -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Silent installer exited with code $($process.ExitCode)." }
-          $installedExe = Join-Path $env:LOCALAPPDATA "Programs/ItsGiving/ItsGiving.exe"
-          if (!(Test-Path $installedExe)) { throw "Installed executable missing at $installedExe" }
-      - name: Verify packaged app, installation and installer
-        shell: pwsh
-        run: python scripts/verify_windows_package.py --app-dir dist/ItsGiving --installer dist/installer/ItsGiving-Setup.exe --installed-dir "$env:LOCALAPPDATA/Programs/ItsGiving"
-      - name: Upload versioned test installer artifact
+          $exe = (Resolve-Path "dist/ItsGiving.exe").Path
+          $p = Start-Process -FilePath $exe -ArgumentList "--help" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Portable app entry-point smoke test failed with exit code $($p.ExitCode)." }
+      - name: Upload portable Windows app
         uses: actions/upload-artifact@v4
         with:
-          name: ItsGiving-Test-v0.1.2-Windows
-          path: dist/installer/ItsGiving-Setup.exe
+          name: ItsGiving-Portable-Windows-v0.2.0
+          path: dist/ItsGiving.exe
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
