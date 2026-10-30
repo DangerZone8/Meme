@@ -1,0 +1,68 @@
+name: Windows portable app CI
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, "feature/**", "fix/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Build and smoke-test portable Windows app
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+      - name: Install app dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller>=6.10,<7"
+      - name: Check Python syntax
+        run: python -m py_compile its_giving.py its_giving_v2.py
+      - name: Verify dependency consistency
+        run: python -m pip check
+      - name: Bundle MediaPipe models
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path models | Out-Null
+          $models = @{
+            "face_landmarker.task" = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+            "hand_landmarker.task" = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            "pose_landmarker_lite.task" = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+          }
+          foreach ($entry in $models.GetEnumerator()) {
+            Invoke-WebRequest -Uri $entry.Value -OutFile (Join-Path "models" $entry.Key)
+            if ((Get-Item (Join-Path "models" $entry.Key)).Length -lt 100000) { throw "Incomplete model: $($entry.Key)" }
+          }
+      - name: Build standalone Windows executable
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
+          if (!(Test-Path "dist/ItsGiving.exe")) { throw "Portable app executable was not created." }
+          if ((Get-Item "dist/ItsGiving.exe").Length -lt 50000000) { throw "Portable executable is unexpectedly small; dependencies may be missing." }
+      - name: Verify portable executable (PE, x64, SHA-256, launch)
+        run: python tools/verify_portable_app.py dist/ItsGiving.exe --smoke-test
+      - name: Upload portable Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ItsGiving-Portable-Windows-v0.2.0
+          path: dist/ItsGiving.exe
+          if-no-files-found: error
+          retention-days: 14

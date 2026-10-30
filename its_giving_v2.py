@@ -82,7 +82,14 @@ MODELS = {
     "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "pose_landmarker_lite.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 }
-HERE = os.path.dirname(os.path.abspath(__file__))
+# PyInstaller extracts bundled read-only resources into _MEIPASS in one-file mode.
+RESOURCE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+HERE = RESOURCE_DIR
+if getattr(sys, "frozen", False):
+    USER_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ItsGiving")
+else:
+    USER_DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 
 def ensure_models():
@@ -99,7 +106,16 @@ def ensure_models():
 
 
 def preflight(model_path):
-    """Open a detector in a throwaway subprocess: bad macOS builds abort() uncatchably."""
+    """Preflight native MediaPipe startup when running from a real Python interpreter.
+
+    In a PyInstaller-frozen Windows app, sys.executable points to ItsGiving.exe,
+    not python.exe. Spawning it with ``-c`` would relaunch this app with invalid
+    arguments and make startup fail before the webcam preview appears. The
+    packaged app initializes its real detectors immediately afterward, so skip
+    only this interpreter-specific subprocess probe when frozen.
+    """
+    if getattr(sys, "frozen", False):
+        return
     code = (
         "import sys\n"
         "from mediapipe.tasks import python as t\n"
@@ -593,7 +609,7 @@ def main():
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
     args = ap.parse_args()
 
-    calib_path = os.path.join(HERE, CALIB_FILE)
+    calib_path = os.path.join(USER_DATA_DIR, CALIB_FILE)
     base = Baseline() if args.no_calibration else Baseline.load(calib_path)
     if base.generic and not args.calibrate and not args.no_calibration:
         print(f"No usable {CALIB_FILE}. Running on the generic baseline — everything is harder to\n"
