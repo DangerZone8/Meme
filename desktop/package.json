@@ -1,0 +1,24 @@
+{
+  "name": "its-giving-desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "It's Giving desktop controller for webcam meme reactions and virtual camera output",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.itsgiving.desktop",
+    "productName": "ItsGiving",
+    "asar": true,
+    "files": ["main.cjs", "preload.cjs", "index.html", "renderer.js"],
+    "extraResources": [{ "from": "resources/ItsGiving.exe", "to": "ItsGiving.exe" }],
+    "win": { "target": ["portable"], "artifactName": "ItsGiving-Desktop-${version}-Windows.${ext}" },
+    "portable": { "artifactName": "ItsGiving-Desktop-${version}-Windows.${ext}" }
+  }
+}
