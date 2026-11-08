@@ -59,10 +59,35 @@ jobs:
           if ((Get-Item "dist/ItsGiving.exe").Length -lt 50000000) { throw "Portable executable is unexpectedly small; dependencies may be missing." }
       - name: Verify portable executable (PE, x64, SHA-256, launch)
         run: python tools/verify_portable_app.py dist/ItsGiving.exe --smoke-test
-      - name: Upload portable Windows app
+      - name: Set up Node.js for Electron
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Package Python engine into Electron desktop app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path desktop/resources | Out-Null
+          Copy-Item dist/ItsGiving.exe desktop/resources/ItsGiving.exe -Force
+          Push-Location desktop
+          try {
+            npm install --no-audit --no-fund
+            npm run dist:win
+          } finally { Pop-Location }
+          $desktopExe = Get-ChildItem desktop/release -Filter "*.exe" | Select-Object -First 1
+          if (!$desktopExe) { throw "Electron portable executable was not created." }
+          python tools/verify_portable_app.py $desktopExe.FullName
+      - name: Upload portable Python engine
         uses: actions/upload-artifact@v4
         with:
-          name: ItsGiving-Portable-Windows-v0.2.0
+          name: ItsGiving-Engine-Windows-v0.3.0
           path: dist/ItsGiving.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload portable Electron desktop app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ItsGiving-Electron-Portable-Windows-v0.3.0
+          path: desktop/release/*.exe
           if-no-files-found: error
           retention-days: 14
