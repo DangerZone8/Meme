@@ -37,6 +37,8 @@ jobs:
         run: python -m py_compile its_giving.py its_giving_v2.py
       - name: Verify dependency consistency
         run: python -m pip check
+      - name: Test full-face meme replacement
+        run: python -m unittest tools.test_face_replacement -v
       - name: Bundle MediaPipe models
         shell: pwsh
         run: |
