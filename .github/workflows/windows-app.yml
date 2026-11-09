@@ -1,8 +1,10 @@
 name: Windows portable app CI
 
+# Do not cancel a running Windows build when another push lands on this branch.
+# Queue the newer run instead so a packaging check cannot silently disappear.
 concurrency:
   group: windows-app-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 on:
   push:
@@ -18,12 +20,24 @@ jobs:
   windows:
     name: Build and smoke-test portable Windows app
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+      - name: Set up Node.js for Electron checks
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Check Electron JavaScript syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          node --check desktop/main.cjs
+          node --check desktop/preload.cjs
+          node --check desktop/renderer.js
+          node -e "JSON.parse(require('fs').readFileSync('desktop/package.json', 'utf8'))"
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -33,6 +47,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller>=6.10,<7"
+      - name: Test Electron desktop contract
+        run: python -m unittest tools.test_desktop_contract -v
       - name: Install OBS Studio for virtual camera verification
         shell: pwsh
         run: |
@@ -44,15 +60,16 @@ jobs:
           if (!(Test-Path $obsExe)) { throw "OBS Studio installation did not provide obs64.exe." }
           $obsRoot = Join-Path $env:ProgramFiles "obs-studio"
           $virtualCamInstaller = Join-Path $obsRoot "data/obs-plugins/win-dshow/virtualcam-install.bat"
-          if (Test-Path $virtualCamInstaller) {
-            & $virtualCamInstaller
-            if ($LASTEXITCODE -ne 0) { throw "OBS Virtual Camera driver registration failed with exit code $LASTEXITCODE." }
+          if (!(Test-Path $virtualCamInstaller)) {
+            throw "OBS Virtual Camera installer is missing: $virtualCamInstaller"
           }
-          Write-Host "OBS Studio installed. The dedicated OBS backend smoke test will verify driver availability."
+          & $virtualCamInstaller
+          if ($LASTEXITCODE -ne 0) { throw "OBS Virtual Camera driver registration failed with exit code $LASTEXITCODE." }
+          Write-Host "OBS Studio installed and Virtual Camera registration command completed."
       - name: Test OBS Virtual Camera output (synthetic 640x480 stream)
         run: python tools/test_obs_virtual_camera.py --width 640 --height 480 --fps 30 --frames 90
       - name: Check Python syntax
-        run: python -m py_compile its_giving.py its_giving_v2.py
+        run: python -m py_compile its_giving.py its_giving_v2.py tools/test_face_replacement.py tools/test_obs_virtual_camera.py tools/test_desktop_contract.py
       - name: Verify dependency consistency
         run: python -m pip check
       - name: Test full-face meme replacement
@@ -74,15 +91,12 @@ jobs:
       - name: Build standalone Windows executable
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
           if (!(Test-Path "dist/ItsGiving.exe")) { throw "Portable app executable was not created." }
           if ((Get-Item "dist/ItsGiving.exe").Length -lt 50000000) { throw "Portable executable is unexpectedly small; dependencies may be missing." }
       - name: Verify portable Python engine (x64, SHA-256, launch)
         run: python tools/verify_portable_app.py dist/ItsGiving.exe --smoke-test
-      - name: Set up Node.js for Electron
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - name: Package Python engine into Electron desktop app
         shell: pwsh
         run: |
@@ -107,14 +121,14 @@ jobs:
           $bundledHash = (Get-FileHash desktop/dist/win-unpacked/resources/ItsGiving.exe -Algorithm SHA256).Hash
           if ($sourceHash -ne $bundledHash) { throw "Bundled Python engine does not match the verified source executable." }
       - name: Upload portable Python engine
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ItsGiving-Engine-Windows-v0.3.0
           path: dist/ItsGiving.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload portable Electron desktop app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ItsGiving-Electron-Portable-Windows-v0.3.0
           path: desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe
