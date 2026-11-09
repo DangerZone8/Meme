@@ -18,7 +18,10 @@ def main() -> int:
     parser.add_argument("--fps", type=float, default=30.0)
     parser.add_argument("--frames", type=int, default=90)
     args = parser.parse_args()
+    if args.width < 80 or args.height < 80 or args.fps <= 0 or args.frames < 1:
+        parser.error("width and height must be >= 80, fps must be > 0, and frames must be >= 1")
 
+    started = time.monotonic()
     camera = None
     try:
         camera = pyvirtualcam.Camera(
@@ -72,5 +75,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    started = time.monotonic()
     raise SystemExit(main())
