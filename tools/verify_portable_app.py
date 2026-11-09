@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the integrity and launchability of the ItsGiving portable Windows executable."""
+"""Verify the integrity and launchability of the ItsGiving Windows executable."""
 from __future__ import annotations
 
 import argparse
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 
-def inspect_pe(path: Path) -> dict:
+def inspect_pe(path: Path, allow_x86: bool = False) -> dict:
     if not path.is_file():
         raise ValueError(f"Executable not found: {path}")
     size = path.stat().st_size
@@ -35,8 +35,14 @@ def inspect_pe(path: Path) -> dict:
         if len(machine_raw) != 2:
             raise ValueError("Truncated PE file header")
         machine = struct.unpack("<H", machine_raw)[0]
-    if machine != 0x8664:
-        raise ValueError(f"Expected x64 Windows executable (0x8664), got 0x{machine:04x}")
+    architectures = {0x8664: "x64"}
+    if allow_x86:
+        architectures[0x014C] = "x86"
+    if machine not in architectures:
+        expected = "x64 or x86" if allow_x86 else "x64"
+        raise ValueError(
+            f"Expected {expected} Windows executable, got 0x{machine:04x}"
+        )
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -44,7 +50,7 @@ def inspect_pe(path: Path) -> dict:
     return {
         "path": str(path),
         "size_bytes": size,
-        "architecture": "x64",
+        "architecture": architectures[machine],
         "format": "PE",
         "sha256": digest.hexdigest(),
     }
@@ -53,11 +59,19 @@ def inspect_pe(path: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("executable", type=Path)
-    parser.add_argument("--smoke-test", action="store_true",
-                        help="launch the executable with --help and require exit code 0")
+    parser.add_argument(
+        "--allow-x86",
+        action="store_true",
+        help="also accept x86 PE files (for Electron's portable bootstrapper)",
+    )
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="launch the executable with --help and require exit code 0",
+    )
     args = parser.parse_args()
     try:
-        result = inspect_pe(args.executable.resolve())
+        result = inspect_pe(args.executable.resolve(), allow_x86=args.allow_x86)
         result["smoke_test"] = "not_requested"
         if args.smoke_test:
             env = os.environ.copy()
