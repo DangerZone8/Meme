@@ -36,14 +36,15 @@ class DesktopContractTests(unittest.TestCase):
         self.assertIn("dist:win", self.package["scripts"])
 
     def test_preload_renderer_and_main_share_the_same_ipc_contract(self):
-        channels = {
-            "start": "engine:start",
-            "stop": "engine:stop",
-            "status": "engine:status",
-            "obsHelp": "app:obs-help",
+        exposed_methods = {
+            'start: options => ipcRenderer.invoke("engine:start", options)',
+            'stop: () => ipcRenderer.invoke("engine:stop")',
+            'status: () => ipcRenderer.invoke("engine:status")',
+            'obsHelp: () => ipcRenderer.invoke("app:obs-help")',
         }
-        for method, channel in channels.items():
-            self.assertRegex(self.preload, rf"{method}:.*ipcRenderer\\.invoke\\(\"{re.escape(channel)}\"")
+        for declaration in exposed_methods:
+            self.assertIn(declaration, self.preload)
+        for channel in ("engine:start", "engine:stop", "engine:status", "app:obs-help"):
             self.assertIn(f'ipcMain.handle("{channel}"', self.main)
         for method in ("start", "stop", "status", "obsHelp", "onState", "onLog"):
             self.assertIn(f"window.itsGiving.{method}", self.renderer)
@@ -51,7 +52,7 @@ class DesktopContractTests(unittest.TestCase):
         self.assertIn('ipcRenderer.on("app:log"', self.preload)
 
     def test_controller_html_contains_every_renderer_target(self):
-        ids = set(re.findall(r'\\bid="([^"]+)"', self.html))
+        ids = set(re.findall('id="([^"]+)"', self.html))
         self.assertTrue({"status", "camera", "size", "start", "stop", "obs", "logs"}.issubset(ids))
 
     def test_obs_instructions_match_direct_backend_usage(self):
