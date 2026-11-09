@@ -19,6 +19,7 @@ class RepositoryContractTests(unittest.TestCase):
         cls.package = json.loads(read("desktop/package.json"))
         cls.web_package = json.loads(read("package.json"))
         cls.vercel = json.loads(read("vercel.json"))
+        cls.engine_requirements = read("engine/requirements.txt")
         cls.main = read("desktop/main.cjs")
         cls.preload = read("desktop/preload.cjs")
         cls.renderer = read("desktop/renderer.js")
@@ -78,6 +79,15 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn('process.env.WINDOWS_APP_URL', self.api)
         self.assertIn('url.protocol !== "https:"', self.api)
         self.assertIn('req.method !== "GET" && req.method !== "HEAD"', self.api)
+
+    def test_vercel_ignores_preview_deployments_to_conserve_build_quota(self):
+        command = self.vercel.get("ignoreCommand", "")
+        self.assertIn("VERCEL_GIT_COMMIT_REF", command)
+        self.assertIn("main", command)
+        self.assertIn("exit 0", command)
+        self.assertIn("exit 1", command)
+        self.assertFalse((ROOT / "requirements.txt").exists())
+        self.assertIn("mediapipe==0.10.21", self.engine_requirements)
 
     def test_vercel_publisher_matches_download_endpoint_contract(self):
         self.assertIn('put("ItsGiving.exe"', self.publisher)
