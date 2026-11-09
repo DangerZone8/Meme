@@ -2,17 +2,27 @@
 
 Electron provides the desktop controller. The Python/MediaPipe engine remains responsible for webcam capture, expression tracking, meme overlays, and virtual-camera frames.
 
-## Build on Windows
+## Windows build
 
-1. Build the engine first with the repository's Windows workflow, producing `dist/ItsGiving.exe`.
-2. Copy that file to `desktop/resources/ItsGiving.exe`.
-3. From this directory run `npm ci` (after committing the generated lockfile) and `npm run dist:win`.
-4. The portable Electron build is emitted under `release/`.
+The repository's **Windows portable app CI** workflow builds the Python engine first, copies it into `desktop/resources/ItsGiving.exe`, and packages the Electron app with electron-builder. The portable executable is emitted under `desktop/dist/` and uploaded as the `ItsGiving-Electron-Portable-Windows-v0.3.0` Actions artifact.
+
+For a local build, first create the engine executable at the repository root:
+
+```powershell
+pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
+New-Item -ItemType Directory -Force desktop/resources | Out-Null
+Copy-Item dist/ItsGiving.exe desktop/resources/ItsGiving.exe -Force
+Set-Location desktop
+npm install
+npm run dist:win
+```
 
 The desktop shell launches the engine as a child process and terminates it when the app closes. The webcam preview remains the engine's OpenCV window.
 
-## Meeting apps and OBS
+## OBS Virtual Camera
 
-The engine uses `pyvirtualcam` to publish processed frames when a compatible virtual-camera backend is installed. In Zoom, Google Meet, Teams, or Discord, choose the virtual camera exposed by the engine. If it is not listed, install OBS Studio and start OBS Virtual Camera; choose **OBS Virtual Camera** in the meeting app. OBS Virtual Camera is a camera endpoint, not a filter that automatically receives the engine frames: if the engine's own virtual camera is unavailable, a dedicated OBS scene/source bridge is still needed.
+The engine connects directly to `OBS Virtual Camera` using the OBS backend in `pyvirtualcam`. Install OBS Studio once to register that device, then **close OBS before starting It's Giving**. Select **OBS Virtual Camera** in Zoom, Google Meet, Teams, or Discord. Do not also start OBS's own Virtual Camera output while the engine is using the device; both would compete for the same endpoint.
+
+The CI smoke test opens that backend and sends synthetic frames. It does not test a physical webcam or verify reception inside a meeting app. Those require a live Windows test.
 
 Camera use is opt-in: users press Start, can stop the engine, and should tell meeting participants when using effects.
