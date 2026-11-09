@@ -33,6 +33,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller>=6.10,<7"
+      - name: Install OBS Studio for virtual camera verification
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $obsExe = Join-Path $env:ProgramFiles "obs-studio/bin/64bit/obs64.exe"
+          if (!(Test-Path $obsExe)) {
+            winget install --id OBSProject.OBSStudio --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          }
+          if (!(Test-Path $obsExe)) { throw "OBS Studio installation did not provide obs64.exe." }
+          $obsRoot = Join-Path $env:ProgramFiles "obs-studio"
+          $virtualCamInstaller = Join-Path $obsRoot "data/obs-plugins/win-dshow/virtualcam-install.bat"
+          if (Test-Path $virtualCamInstaller) {
+            & $virtualCamInstaller
+            if ($LASTEXITCODE -ne 0) { throw "OBS Virtual Camera driver registration failed with exit code $LASTEXITCODE." }
+          }
+          Write-Host "OBS Studio installed. The dedicated OBS backend smoke test will verify driver availability."
+      - name: Test OBS Virtual Camera output (synthetic 640x480 stream)
+        run: python tools/test_obs_virtual_camera.py --width 640 --height 480 --fps 30 --frames 90
       - name: Check Python syntax
         run: python -m py_compile its_giving.py its_giving_v2.py
       - name: Verify dependency consistency
