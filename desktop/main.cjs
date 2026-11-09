@@ -70,8 +70,8 @@ app.whenReady().then(() => {
   ipcMain.handle("app:obs-help", async () => {
     await dialog.showMessageBox(win, {
       type: "info", title: "Use It's Giving in a call",
-      message: "Select the It's Giving virtual camera in Zoom, Google Meet, Teams, or Discord.",
-      detail: "If the camera is not listed, install OBS Studio, open OBS, choose Start Virtual Camera, then restart the meme engine. In the meeting app, select OBS Virtual Camera. If It's Giving's own virtual camera appears, you can select that directly. Close other apps using the webcam if it is unavailable."
+      message: "Select OBS Virtual Camera in Zoom, Google Meet, Teams, or Discord.",
+      detail: "Install OBS Studio once to register its Virtual Camera device. Close OBS before starting It's Giving: the app sends its processed frames directly to OBS Virtual Camera. Do not also click Start Virtual Camera inside OBS while It's Giving is using the device. If the camera is missing, install or repair OBS Studio, then restart It's Giving and the meeting app. Close other apps using the webcam if the physical camera is unavailable."
     });
   });
   createWindow();
