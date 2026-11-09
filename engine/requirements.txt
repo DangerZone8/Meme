@@ -1,4 +1,4 @@
-# Verified on Python 3.12 / macOS arm64: `pip install -r requirements.txt` and run.
+# Verified on Python 3.12 / macOS arm64: `pip install -r engine/requirements.txt` and run.
 #
 # Don't casually unpin these. mediapipe 0.10.30+ (including 1.0.x) ships macOS
 # wheels that abort() on startup — "Check failed: service_ Service is unavailable",
