@@ -35,7 +35,11 @@ jobs:
           node --check desktop/main.cjs
           node --check desktop/preload.cjs
           node --check desktop/renderer.js
+          node --check api/download.js
+          node --check scripts/publish_vercel_app.mjs
           node -e "JSON.parse(require('fs').readFileSync('desktop/package.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('vercel.json', 'utf8'))"
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -70,7 +74,7 @@ jobs:
       - name: Test OBS Virtual Camera output (synthetic 640x480 stream)
         run: python tools/test_obs_virtual_camera.py --width 640 --height 480 --fps 30 --frames 90
       - name: Check Python syntax
-        run: python -m py_compile its_giving.py its_giving_v2.py tools/test_face_replacement.py tools/test_obs_virtual_camera.py tools/test_desktop_contract.py
+        run: python -m py_compile its_giving.py its_giving_v2.py tools/test_face_replacement.py tools/test_obs_virtual_camera.py tools/test_desktop_contract.py scripts/verify_windows_package.py
       - name: Verify dependency consistency
         run: python -m pip check
       - name: Test full-face meme replacement
