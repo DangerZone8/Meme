@@ -80,12 +80,12 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn('url.protocol !== "https:"', self.api)
         self.assertIn('req.method !== "GET" && req.method !== "HEAD"', self.api)
 
-    def test_vercel_ignores_preview_deployments_to_conserve_build_quota(self):
+    def test_vercel_ignores_preview_deployments_but_builds_main(self):
         command = self.vercel.get("ignoreCommand", "")
         self.assertIn("VERCEL_GIT_COMMIT_REF", command)
-        self.assertIn("main", command)
-        self.assertIn("exit 0", command)
-        self.assertIn("exit 1", command)
+        self.assertIn('= "main"', command)
+        self.assertIn("then exit 1", command)
+        self.assertIn("else exit 0", command)
         self.assertFalse((ROOT / "requirements.txt").exists())
         self.assertIn("mediapipe==0.10.21", self.engine_requirements)
 
