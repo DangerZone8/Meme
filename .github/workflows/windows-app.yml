@@ -59,7 +59,7 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
           if (!(Test-Path "dist/ItsGiving.exe")) { throw "Portable app executable was not created." }
           if ((Get-Item "dist/ItsGiving.exe").Length -lt 50000000) { throw "Portable executable is unexpectedly small; dependencies may be missing." }
-      - name: Verify portable executable (PE, x64, SHA-256, launch)
+      - name: Verify portable Python engine (x64, SHA-256, launch)
         run: python tools/verify_portable_app.py dist/ItsGiving.exe --smoke-test
       - name: Set up Node.js for Electron
         uses: actions/setup-node@v4
@@ -76,9 +76,18 @@ jobs:
             npm install --no-audit --no-fund
             npm run dist:win
           } finally { Pop-Location }
-          $desktopExe = Get-ChildItem desktop/dist -Filter "*.exe" | Select-Object -First 1
+          $desktopExe = Get-Item "desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe"
           if (!$desktopExe) { throw "Electron portable executable was not created." }
-          python tools/verify_portable_app.py $desktopExe.FullName
+          # electron-builder's portable target uses an x86 NSIS bootstrapper
+          # even when the unpacked Electron application is x64.
+          python tools/verify_portable_app.py $desktopExe.FullName --allow-x86
+          # Verify the actual Electron app and the Python engine embedded in it
+          # are both x64; do not mistake the bootstrapper's architecture for the app's.
+          python tools/verify_portable_app.py desktop/dist/win-unpacked/ItsGiving.exe
+          python tools/verify_portable_app.py desktop/dist/win-unpacked/resources/ItsGiving.exe
+          $sourceHash = (Get-FileHash dist/ItsGiving.exe -Algorithm SHA256).Hash
+          $bundledHash = (Get-FileHash desktop/dist/win-unpacked/resources/ItsGiving.exe -Algorithm SHA256).Hash
+          if ($sourceHash -ne $bundledHash) { throw "Bundled Python engine does not match the verified source executable." }
       - name: Upload portable Python engine
         uses: actions/upload-artifact@v4
         with:
@@ -90,6 +99,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ItsGiving-Electron-Portable-Windows-v0.3.0
-          path: desktop/dist/*.exe
+          path: desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe
           if-no-files-found: error
           retention-days: 14
