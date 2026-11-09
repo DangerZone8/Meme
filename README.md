@@ -31,7 +31,7 @@ Use Python 3.11 or 3.12:
 python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip install -r engine/requirements.txt
 python its_giving_v2.py --calibrate
 python its_giving_v2.py
 ```
