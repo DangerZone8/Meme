@@ -76,7 +76,7 @@ jobs:
             npm install --no-audit --no-fund
             npm run dist:win
           } finally { Pop-Location }
-          $desktopExe = Get-ChildItem desktop/release -Filter "*.exe" | Select-Object -First 1
+          $desktopExe = Get-ChildItem desktop/dist -Filter "*.exe" | Select-Object -First 1
           if (!$desktopExe) { throw "Electron portable executable was not created." }
           python tools/verify_portable_app.py $desktopExe.FullName
       - name: Upload portable Python engine
@@ -90,6 +90,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ItsGiving-Electron-Portable-Windows-v0.3.0
-          path: desktop/release/*.exe
+          path: desktop/dist/*.exe
           if-no-files-found: error
           retention-days: 14
