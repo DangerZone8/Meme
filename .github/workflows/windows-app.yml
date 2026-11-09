@@ -60,12 +60,13 @@ jobs:
           if (!(Test-Path $obsExe)) { throw "OBS Studio installation did not provide obs64.exe." }
           $obsRoot = Join-Path $env:ProgramFiles "obs-studio"
           $virtualCamInstaller = Join-Path $obsRoot "data/obs-plugins/win-dshow/virtualcam-install.bat"
-          if (!(Test-Path $virtualCamInstaller)) {
-            throw "OBS Virtual Camera installer is missing: $virtualCamInstaller"
+          if (Test-Path $virtualCamInstaller) {
+            & $virtualCamInstaller
+            if ($LASTEXITCODE -ne 0) { throw "OBS Virtual Camera driver registration failed with exit code $LASTEXITCODE." }
+            Write-Host "Legacy OBS Virtual Camera registration script completed."
+          } else {
+            Write-Host "This OBS package does not include the legacy registration script. The following pyvirtualcam smoke test is the authoritative device-availability check."
           }
-          & $virtualCamInstaller
-          if ($LASTEXITCODE -ne 0) { throw "OBS Virtual Camera driver registration failed with exit code $LASTEXITCODE." }
-          Write-Host "OBS Studio installed and Virtual Camera registration command completed."
       - name: Test OBS Virtual Camera output (synthetic 640x480 stream)
         run: python tools/test_obs_virtual_camera.py --width 640 --height 480 --fps 30 --frames 90
       - name: Check Python syntax
