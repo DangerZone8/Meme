@@ -3,19 +3,23 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import replace_face
+from its_giving_v2 import decide, replace_face
 
 
 class FaceReplacementTests(unittest.TestCase):
     def test_transparent_meme_pixels_never_reveal_camera_frame(self):
-        frame = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
+        original = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
+        frame = original.copy()
         # Fully transparent input should still become an opaque face-covering plate.
         sprite = np.zeros((100, 100, 4), dtype=np.uint8)
         sprite[:, :, :3] = (20, 180, 240)
         face = SimpleNamespace(center=(160.0, 120.0), w=80.0, h=100.0, roll=0.0)
         result = replace_face(frame, sprite, face)
-        self.assertFalse(np.array_equal(result[120, 160], np.array((10, 20, 30), dtype=np.uint8)))
         self.assertTrue(np.array_equal(result[120, 160], np.array((20, 180, 240), dtype=np.uint8)))
+        # The detected face rectangle, not just its centre point, must be covered.
+        face_region = result[70:170, 120:200]
+        original_region = original[70:170, 120:200]
+        self.assertTrue(np.all(np.any(face_region != original_region, axis=2)))
 
     def test_replacement_tracks_face_center_and_tilt(self):
         frame = np.zeros((300, 400, 3), dtype=np.uint8)
@@ -24,6 +28,30 @@ class FaceReplacementTests(unittest.TestCase):
         result = replace_face(frame, sprite, face)
         self.assertGreater(int(np.count_nonzero(result[:, :, 1])), 1000)
         self.assertTrue(np.array_equal(result[140, 230], np.array((0, 255, 0), dtype=np.uint8)))
+
+    def test_expression_selected_meme_is_applied_as_full_face_replacement(self):
+        original = np.full((240, 320, 3), (15, 25, 35), dtype=np.uint8)
+        frame = original.copy()
+        face = SimpleNamespace(
+            center=(160.0, 120.0), w=80.0, h=100.0, roll=0.0,
+            nose=(160.0, 110.0), mouth=(160.0, 145.0), eye_y=95.0,
+            top=(160.0, 60.0),
+        )
+        measurements = {
+            "jaw": 0.55, "z_jaw": 7.0,
+            "sneer": 0.0, "z_sneer": 0.0, "z_disgust": 0.0,
+            "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+        }
+        pose, _ = decide(face, [], None, 0.0, 0.0, measurements)
+        self.assertEqual(pose, "open_mouth")
+
+        meme = np.zeros((120, 120, 4), dtype=np.uint8)
+        meme[:, :, :3] = (220, 40, 180)
+        result = replace_face(frame, meme, face)
+        self.assertTrue(np.all(np.any(
+            result[70:170, 120:200] != original[70:170, 120:200], axis=2
+        )))
 
 
 if __name__ == "__main__":
