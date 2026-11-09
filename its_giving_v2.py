@@ -700,8 +700,10 @@ def main():
     if not args.no_vcam:
         try:
             import pyvirtualcam
-            vcam = pyvirtualcam.Camera(width=W, height=H, fps=30, fmt=pyvirtualcam.PixelFormat.BGR)
-            print(f"Virtual camera: '{vcam.device}'  <- pick this camera in Zoom / Meet")
+            vcam = pyvirtualcam.Camera(
+                width=W, height=H, fps=30, fmt=pyvirtualcam.PixelFormat.BGR,
+                device="OBS Virtual Camera", backend="obs")
+            print(f"Virtual camera: '{vcam.device}' (backend: {vcam.backend})  <- pick OBS Virtual Camera in Zoom / Meet")
         except Exception as e:
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
