@@ -82,7 +82,14 @@ MODELS = {
     "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "pose_landmarker_lite.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 }
-HERE = os.path.dirname(os.path.abspath(__file__))
+# PyInstaller extracts bundled read-only resources into _MEIPASS in one-file mode.
+RESOURCE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+HERE = RESOURCE_DIR
+if getattr(sys, "frozen", False):
+    USER_DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ItsGiving")
+else:
+    USER_DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(USER_DATA_DIR, exist_ok=True)
 
 
 def ensure_models():
@@ -99,7 +106,16 @@ def ensure_models():
 
 
 def preflight(model_path):
-    """Open a detector in a throwaway subprocess: bad macOS builds abort() uncatchably."""
+    """Preflight native MediaPipe startup when running from a real Python interpreter.
+
+    In a PyInstaller-frozen Windows app, sys.executable points to ItsGiving.exe,
+    not python.exe. Spawning it with ``-c`` would relaunch this app with invalid
+    arguments and make startup fail before the webcam preview appears. The
+    packaged app initializes its real detectors immediately afterward, so skip
+    only this interpreter-specific subprocess probe when frozen.
+    """
+    if getattr(sys, "frozen", False):
+        return
     code = (
         "import sys\n"
         "from mediapipe.tasks import python as t\n"
@@ -380,6 +396,41 @@ def overlay(frame, sprite, x, y):
     return frame
 
 
+def replace_face(frame, sprite, face, scale=1.24):
+    """Place an opaque, head-tilt-aligned meme plate over the complete detected face.
+
+    The meme is cover-cropped to the padded face bounds and flattened to opaque
+    pixels before rotation, so transparent PNG areas cannot reveal the camera image.
+    """
+    H, W = frame.shape[:2]
+    cx, cy = face.center
+    target_w = max(8, int(round(face.w * scale)))
+    target_h = max(8, int(round(face.h * scale)))
+    sh, sw = sprite.shape[:2]
+    # Cover-crop without stretching the meme's aspect ratio.
+    factor = max(target_w / max(sw, 1), target_h / max(sh, 1))
+    nw, nh = max(target_w, int(round(sw * factor))), max(target_h, int(round(sh * factor)))
+    resized = cv2.resize(sprite, (nw, nh), interpolation=cv2.INTER_AREA if factor < 1 else cv2.INTER_LINEAR)
+    ox, oy = (nw - target_w) // 2, (nh - target_h) // 2
+    plate = resized[oy:oy + target_h, ox:ox + target_w].copy()
+    if plate.shape[2] == 4:
+        # Preserve the meme artwork but make every pixel opaque to guarantee face coverage.
+        plate[:, :, 3] = 255
+    else:
+        plate = cv2.cvtColor(plate, cv2.COLOR_BGR2BGRA)
+    matrix = cv2.getRotationMatrix2D((target_w / 2, target_h / 2), face.roll, 1.0)
+    cos, sin = abs(matrix[0, 0]), abs(matrix[0, 1])
+    out_w = int(target_h * sin + target_w * cos)
+    out_h = int(target_h * cos + target_w * sin)
+    matrix[0, 2] += out_w / 2 - target_w / 2
+    matrix[1, 2] += out_h / 2 - target_h / 2
+    rotated = cv2.warpAffine(plate, matrix, (out_w, out_h), flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_REPLICATE)
+    x, y = int(round(cx - out_w / 2)), int(round(cy - out_h / 2))
+    # Reuse the alpha compositor; the rotated plate is fully opaque.
+    return overlay(frame, rotated, x, y)
+
+
 def dist(a, b):
     return float(np.hypot(a[0] - b[0], a[1] - b[1]))
 
@@ -396,6 +447,8 @@ class Face:
         self.nose, self.chin, self.top = p[1], p[152], p[10]
         self.mouth = (p[13] + p[14]) / 2
         self.eye_y = float((p[33][1] + p[263][1]) / 2)
+        # Roll follows the eye line so the replacement stays aligned as the head tilts.
+        self.roll = float(np.degrees(np.arctan2(p[263][1] - p[33][1], p[263][0] - p[33][0])))
         cl, cr = p[234], p[454]
         self.turn_signed = float((self.nose[0] - cl[0]) / max(cr[0] - cl[0], 1e-3) - 0.5)
         self.bs = {c.category_name: c.score for c in (blendshapes or [])}
@@ -593,7 +646,7 @@ def main():
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
     args = ap.parse_args()
 
-    calib_path = os.path.join(HERE, CALIB_FILE)
+    calib_path = os.path.join(USER_DATA_DIR, CALIB_FILE)
     base = Baseline() if args.no_calibration else Baseline.load(calib_path)
     if base.generic and not args.calibrate and not args.no_calibration:
         print(f"No usable {CALIB_FILE}. Running on the generic baseline — everything is harder to\n"
@@ -647,8 +700,10 @@ def main():
     if not args.no_vcam:
         try:
             import pyvirtualcam
-            vcam = pyvirtualcam.Camera(width=W, height=H, fps=30, fmt=pyvirtualcam.PixelFormat.BGR)
-            print(f"Virtual camera: '{vcam.device}'  <- pick this camera in Zoom / Meet")
+            vcam = pyvirtualcam.Camera(
+                width=W, height=H, fps=30, fmt=pyvirtualcam.PixelFormat.BGR,
+                device="OBS Virtual Camera", backend="obs")
+            print(f"Virtual camera: '{vcam.device}' (backend: {vcam.backend})  <- pick OBS Virtual Camera in Zoom / Meet")
         except Exception as e:
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
@@ -709,13 +764,13 @@ def main():
                 sm_center = 0.7 * sm_center + 0.3 * np.array(face.center, np.float32)
                 sm_h = 0.7 * sm_h + 0.3 * face.h * FACE_SCALE
 
-            if shown:
+            if shown and face is not None:
                 asset = assets[shown]
                 idx = asset.frame_at(int((now - shown_since) * 1000))
-                h = int(min(sm_h, H * 0.98, (W * 0.98) / asset.aspect)) // 8 * 8
-                sprite = asset.scaled(idx, max(h, 8))
-                sh, sw = sprite.shape[:2]
-                overlay(frame, sprite, int(sm_center[0] - sw / 2), int(sm_center[1] - sh / 2 - 0.05 * sh))
+                # Size the selected reaction from the current face geometry every frame;
+                # this keeps the full-face replacement attached during head movement.
+                sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
+                replace_face(frame, sprite, face, scale=1.24)
 
             if vcam:
                 vcam.send(frame)
