@@ -1,4 +1,4 @@
-"""Static integration checks for the Electron controller and Python engine contract."""
+"""Static integration checks for the website, Electron shell, and engine contract."""
 from __future__ import annotations
 
 import json
@@ -13,14 +13,19 @@ def read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
-class DesktopContractTests(unittest.TestCase):
+class RepositoryContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.package = json.loads(read("desktop/package.json"))
+        cls.web_package = json.loads(read("package.json"))
+        cls.vercel = json.loads(read("vercel.json"))
         cls.main = read("desktop/main.cjs")
         cls.preload = read("desktop/preload.cjs")
         cls.renderer = read("desktop/renderer.js")
         cls.html = read("desktop/index.html")
+        cls.website = read("index.html")
+        cls.api = read("api/download.js")
+        cls.publisher = read("scripts/publish_vercel_app.mjs")
         cls.help = read("README.md") + read("desktop/README.md")
 
     def test_packaged_files_and_engine_resource_are_declared(self):
@@ -61,6 +66,24 @@ class DesktopContractTests(unittest.TestCase):
         self.assertIn("obs virtual camera", text)
         self.assertNotIn("open obs and start its virtual camera", text)
         self.assertNotIn("start obs virtual camera; choose", text)
+
+    def test_website_download_route_is_wired_to_api(self):
+        rewrites = self.vercel.get("rewrites", [])
+        self.assertIn(
+            {"source": "/download", "destination": "/api/download"},
+            rewrites,
+        )
+        self.assertIn('href="/download"', self.website)
+        self.assertEqual(self.web_package.get("type"), "module")
+        self.assertIn('process.env.WINDOWS_APP_URL', self.api)
+        self.assertIn('url.protocol !== "https:"', self.api)
+        self.assertIn('req.method !== "GET" && req.method !== "HEAD"', self.api)
+
+    def test_vercel_publisher_matches_download_endpoint_contract(self):
+        self.assertIn('put("ItsGiving.exe"', self.publisher)
+        self.assertIn('console.log("WINDOWS_APP_URL=" + blob.url)', self.publisher)
+        self.assertNotIn("VERCEL_INSTALLER_URL", self.publisher)
+        self.assertNotIn("ItsGiving-Setup.exe", self.publisher)
 
 
 if __name__ == "__main__":
