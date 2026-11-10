@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import decide, replace_face
+from its_giving_v2 import associate_people, decide, replace_face
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -28,6 +28,27 @@ class FaceReplacementTests(unittest.TestCase):
         result = replace_face(frame, sprite, face)
         self.assertGreater(int(np.count_nonzero(result[:, :, 1])), 1000)
         self.assertTrue(np.array_equal(result[140, 230], np.array((0, 255, 0), dtype=np.uint8)))
+
+    def test_multiple_people_get_independent_hand_and_body_assignments(self):
+        faces = [
+            SimpleNamespace(center=(80.0, 100.0), w=60.0, h=80.0),
+            SimpleNamespace(center=(260.0, 100.0), w=60.0, h=80.0),
+        ]
+        hands = [
+            SimpleNamespace(palm=np.array((75.0, 130.0))),
+            SimpleNamespace(palm=np.array((265.0, 130.0))),
+            SimpleNamespace(palm=np.array((400.0, 130.0))),
+        ]
+        bodies = [
+            SimpleNamespace(shoulders=np.array(((65.0, 155.0), (95.0, 155.0)))),
+            SimpleNamespace(shoulders=np.array(((245.0, 155.0), (275.0, 155.0)))),
+        ]
+        assigned = associate_people(faces, hands, bodies)
+        self.assertEqual([len(item[0]) for item in assigned], [1, 1])
+        self.assertIs(assigned[0][1], bodies[0])
+        self.assertIs(assigned[1][1], bodies[1])
+        self.assertIs(assigned[0][0][0], hands[0])
+        self.assertIs(assigned[1][0][0], hands[1])
 
     def test_expression_selected_meme_is_applied_as_full_face_replacement(self):
         original = np.full((240, 320, 3), (15, 25, 35), dtype=np.uint8)
