@@ -4,7 +4,9 @@ name: Windows portable app CI
 # Queue the newer run instead so a packaging check cannot silently disappear.
 concurrency:
   group: windows-app-${{ github.ref }}
-  cancel-in-progress: false
+  # Keep production/main builds safe, but let the newest PR/feature push replace
+  # stale queued builds so rapid commits do not serialize dozens of obsolete runs.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 on:
   push:
@@ -36,7 +38,6 @@ jobs:
           node --check desktop/preload.cjs
           node --check desktop/renderer.js
           node --check api/download.js
-          node --check scripts/publish_vercel_app.mjs
           node --test tools/test_download_endpoint.mjs
           node -e "JSON.parse(require('fs').readFileSync('desktop/package.json', 'utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"
@@ -132,63 +133,12 @@ jobs:
           name: ItsGiving-Engine-Windows-v0.3.0
           path: dist/ItsGiving.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Upload portable Electron desktop app
         uses: actions/upload-artifact@v5
         with:
           name: ItsGiving-Electron-Portable-Windows-v0.3.0
           path: desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
 
-  publish:
-    name: Publish Windows app to Vercel Blob and deploy download route
-    needs: windows
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v5
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-      - name: Download verified Windows engine artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: ItsGiving-Engine-Windows-v0.3.0
-          path: dist
-      - name: Install website publishing dependency
-        run: npm install --no-audit --no-fund
-      - name: Upload executable to public Vercel Blob
-        id: blob
-        env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-        run: |
-          set -euo pipefail
-          node scripts/publish_vercel_app.mjs dist/ItsGiving.exe | tee publish-output.txt
-          url="$(sed -n 's/^WINDOWS_APP_URL=//p' publish-output.txt)"
-          test -n "$url"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-      - name: Configure production download URL and deploy website
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          WINDOWS_APP_URL: ${{ steps.blob.outputs.url }}
-        run: |
-          set -euo pipefail
-          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID WINDOWS_APP_URL; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required GitHub Actions secret/output: $name"
-              exit 1
-            fi
-          done
-          npm install --global vercel@latest
-          vercel link --yes --token "$VERCEL_TOKEN"
-          if vercel env ls production --token "$VERCEL_TOKEN" | grep -q "WINDOWS_APP_URL"; then
-            vercel env update WINDOWS_APP_URL production --value "$WINDOWS_APP_URL" --yes --token "$VERCEL_TOKEN"
-          else
-            vercel env add WINDOWS_APP_URL production --value "$WINDOWS_APP_URL" --yes --token "$VERCEL_TOKEN"
-          fi
-          vercel deploy --prod --yes --token "$VERCEL_TOKEN"

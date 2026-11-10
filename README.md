@@ -11,20 +11,14 @@ The GitHub Actions workflow builds two artifacts on Windows:
 
 Open the **Windows portable app CI** workflow, select a successful run, and download the Electron portable artifact. Extract the ZIP and run `ItsGiving-Desktop-0.3.0-Windows.exe`. There is no setup wizard or installer.
 
-This repository is public, so its Actions artifacts are downloadable by anyone with access to the repository. They are not private test downloads. Artifacts are retained for 14 days. The workflow does not publish a GitHub Release.
+## Website download — no secrets required
 
-### Publish the website download
+The website's `/download` route redirects to a public [nightly.link](https://nightly.link/) artifact URL for the latest successful Windows CI build on `main`. Visitors do not need to sign in to GitHub. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The website requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret. nightly.link is an external service that brokers anonymous downloads of public GitHub Actions artifacts.
 
-The **Windows portable app CI** workflow has a manual publish mode. To publish the verified engine to Vercel Blob, update the production download URL, and deploy the website, configure these GitHub Actions repository secrets:
+Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The download link automatically follows the newest successful build; no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the external download service reports that the artifact is unavailable.
 
-- `BLOB_READ_WRITE_TOKEN` — write token for the Vercel Blob store.
-- `VERCEL_TOKEN` — Vercel access token.
-- `VERCEL_ORG_ID` — Vercel team/org ID that owns the website project.
-- `VERCEL_PROJECT_ID` — ID of the Vercel project serving the website.
+The website itself continues to deploy from `main` through the existing Vercel Git integration. That integration is configured in the Vercel dashboard and does not require repository secrets.
 
-Then open **Actions → Windows portable app CI → Run workflow**, select the `main` branch, and run it. The publish job rebuilds the app, uploads the verified executable with multipart upload, configures `WINDOWS_APP_URL` for Production, and deploys the website. Pull-request runs never publish or modify production settings.
-
-The public `/download` route redirects directly to the Blob download URL so the serverless function does not buffer the entire executable. The Blob URL must be a public Vercel Blob URL for `ItsGiving.exe`.
 
 ## OBS Virtual Camera
 
