@@ -260,6 +260,7 @@ def run_calibration(cap, face_det, clock, args, W, H, window):
             frame = cv2.resize(frame, (W, H))
         if not args.no_flip:
             frame = cv2.flip(frame, 1)
+        frame = enhance_camera_frame(frame)
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         fr = face_det.detect_for_video(mp_img, clock.next())
         face = Face(fr.face_landmarks[0], fr.face_blendshapes[0] if fr.face_blendshapes else None, W, H) \
@@ -431,6 +432,37 @@ def replace_face(frame, sprite, face, scale=1.24):
     return overlay(frame, rotated, x, y)
 
 
+def enhance_camera_frame(frame):
+    """Adaptive cleanup for dim, low-contrast or mildly soft webcam frames."""
+    if frame is None or frame.size == 0:
+        return frame
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    brightness = float(np.mean(gray))
+    contrast = float(np.std(gray))
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    result = frame
+
+    # Lift underexposed frames without aggressively washing out normal lighting.
+    if brightness < 92:
+        gamma = 1.0 + min(0.55, (92.0 - brightness) / 150.0)
+        lut = np.array([min(255, round(((i / 255.0) ** (1.0 / gamma)) * 255))
+                        for i in range(256)], dtype=np.uint8)
+        result = cv2.LUT(result, lut)
+
+    # Local contrast enhancement helps faces remain separable in haze or flat lighting.
+    if contrast < 48:
+        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
+        light, a, b = cv2.split(lab)
+        light = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8)).apply(light)
+        result = cv2.cvtColor(cv2.merge((light, a, b)), cv2.COLOR_LAB2BGR)
+
+    # Mild edge recovery for slightly soft lenses; skip very noisy/dark frames.
+    if sharpness < 85 and brightness > 35 and contrast > 10:
+        softened = cv2.GaussianBlur(result, (0, 0), 1.0)
+        result = cv2.addWeighted(result, 1.35, softened, -0.35, 0)
+    return result
+
+
 def dist(a, b):
     return float(np.hypot(a[0] - b[0], a[1] - b[1]))
 
@@ -509,7 +541,7 @@ def associate_people(faces, hands, bodies):
     body_groups = [[] for _ in faces]
     for hand in hands:
         index = min(range(len(faces)), key=lambda i: dist(hand.palm, faces[i].center))
-        if dist(hand.palm, faces[index].center) < max(faces[index].w * 2.4, 90):
+        if dist(hand.palm, faces[index].center) < max(faces[index].w * 1.8, 75):
             hand_groups[index].append(hand)
     for body in bodies:
         center = body.shoulders.mean(axis=0)
@@ -612,7 +644,7 @@ def decide(face, hands, body, tongue, gesture, m):
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
 
     # Wide-eyed, open-mouth reactions are distinct enough to win over weaker cues.
-    if screaming and m["eyes_wide"] > 0.30:
+    if screaming and m.get("eyes_wide", 0.0) > 0.30:
         return "crashing_out", d
 
     if len(hands) >= 2:
@@ -644,11 +676,11 @@ def decide(face, hands, body, tongue, gesture, m):
             return "hand_up", d
 
     # Additional direct expression cues work without personal calibration.
-    if m["smile"] > 0.52:
+    if m.get("smile", 0.0) > 0.52:
         return "dance", d
-    if m["pucker"] > 0.38:
+    if m.get("pucker", 0.0) > 0.38:
         return "flirty", d
-    if m["brow_up"] > 0.42 and m["eyes_wide"] > 0.22:
+    if m.get("brow_up", 0.0) > 0.42 and m.get("eyes_wide", 0.0) > 0.22:
         return "suspicious", d
     if tongue > T["tongue"]:
         return "tongue_out", d
@@ -783,6 +815,7 @@ def main():
                 frame = cv2.resize(frame, (W, H))
             if not args.no_flip:
                 frame = cv2.flip(frame, 1)
+            frame = enhance_camera_frame(frame)
 
             ts = clock.next()
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -801,10 +834,9 @@ def main():
             face_ids, next_person_id = assign_track_ids(faces, person_state, next_person_id)
             people = associate_people(faces, all_hands, all_bodies)
             shown_items = []
-            for person_id, face in zip(face_ids, faces):
-                # Associate each hand/body with the nearest detected face, so one
-                # person's gestures do not trigger another person's reaction.
-                hands, body = people[person_id]
+            for person_id, face, (hands, body) in zip(face_ids, faces, people):
+                # The association list is frame-ordered; persistent track IDs are
+                # dictionary keys and must never be used as list indexes.
 
                 state = person_state.setdefault(person_id, {
                     "motion": Motion(), "shown": None, "hold": 0,
