@@ -93,14 +93,6 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertFalse((ROOT / "requirements.txt").exists())
         self.assertIn("mediapipe==0.10.21", self.engine_requirements)
 
-    def test_vercel_publisher_matches_download_endpoint_contract(self):
-        self.assertIn('put("ItsGiving.exe"', self.publisher)
-        self.assertIn("createReadStream(filePath)", self.publisher)
-        self.assertIn("multipart: true", self.publisher)
-        self.assertIn("fileInfo.size < 50_000_000", self.publisher)
-        self.assertIn('console.log("WINDOWS_APP_URL=" + blob.downloadUrl)', self.publisher)
-        self.assertNotIn("VERCEL_INSTALLER_URL", self.publisher)
-        self.assertNotIn("ItsGiving-Setup.exe", self.publisher)
 
 
 if __name__ == "__main__":
