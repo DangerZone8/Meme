@@ -23,5 +23,6 @@
       "source": "/download",
       "destination": "/api/download"
     }
-  ]
+  ],
+  "framework": null
 }
