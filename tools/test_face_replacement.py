@@ -52,8 +52,8 @@ class FaceReplacementTests(unittest.TestCase):
 
     def test_person_track_ids_follow_people_when_they_cross(self):
         state = {
-            4: {"center": (80.0, 100.0)},
-            9: {"center": (260.0, 100.0)},
+            4: {"center": (220.0, 100.0)},
+            9: {"center": (120.0, 100.0)},
         }
         # Faces are always supplied left-to-right; after crossing, their order swaps.
         faces = [
@@ -61,9 +61,9 @@ class FaceReplacementTests(unittest.TestCase):
             SimpleNamespace(center=(230.0, 100.0), w=60.0),
         ]
         ids, next_id = assign_track_ids(faces, state, 10)
-        self.assertEqual(ids, [4, 9])
+        self.assertEqual(ids, [9, 4])
         self.assertEqual(next_id, 10)
-        self.assertEqual(state[4]["center"], (80.0, 100.0))
+        self.assertEqual(state[4]["center"], (220.0, 100.0))
 
     def test_common_smile_and_pucker_expressions_trigger_without_calibration(self):
         face = SimpleNamespace(
