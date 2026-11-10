@@ -11,19 +11,14 @@ The GitHub Actions workflow builds two artifacts on Windows:
 
 Open the **Windows portable app CI** workflow, select a successful run, and download the Electron portable artifact. Extract the ZIP and run `ItsGiving-Desktop-0.3.0-Windows.exe`. There is no setup wizard or installer.
 
-## Website download — no Vercel secrets required
+## Website download — no secrets required
 
-The website's `/download` route redirects to `/downloads/ItsGiving.exe`, a static executable served by Vercel. The site does not need `WINDOWS_APP_URL`, Vercel Blob, or any Vercel API credentials at runtime.
+The website's `/download` route looks up the latest successful Windows CI run on the public GitHub repository and redirects to its portable Electron app artifact. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The endpoint uses GitHub's public API and requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret.
 
-To publish an updated Windows app:
+Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The website automatically follows the newest successful build, so no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the download route reports that the app is temporarily unavailable rather than returning a broken link.
 
-1. Run **Actions → Windows portable app CI → Run workflow** on `main`.
-2. The workflow builds and verifies the portable Electron app, then opens a PR containing the executable under `public/downloads/ItsGiving.exe`.
-3. Review and merge that PR. The existing Vercel Git integration deploys the static file with the website.
+The website itself continues to deploy from `main` through the existing Vercel Git integration. That integration is configured in the Vercel dashboard and does not require repository secrets.
 
-The publishing workflow uses GitHub's automatically provided `GITHUB_TOKEN`; it does not require `BLOB_READ_WRITE_TOKEN`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID`. The generated executable must remain below GitHub's 100 MB per-file limit. If it exceeds the configured safety limit, publication stops with a clear error instead of creating a broken PR.
-
-The website itself remains deployable from `main` through the existing Vercel Git integration. If that integration is disconnected, reconnect the GitHub repository in Vercel; no deployment secrets need to be added to this repository.
 
 ## OBS Virtual Camera
 
