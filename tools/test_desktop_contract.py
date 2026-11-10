@@ -75,6 +75,17 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("getWindowProperty(window, cv2.WND_PROP_VISIBLE)", read("its_giving_v2.py"))
         self.assertIn('win.on("close", () => { if (worker) worker.kill(); });', self.main)
 
+    def test_obs_virtual_camera_receives_clean_frame_without_hud_dots(self):
+        engine = read("its_giving_v2.py")
+        send_at = engine.index("vcam.send(frame)")
+        preview_at = engine.index("cv2.imshow(window, preview)", send_at)
+        hud_at = engine.index("draw_hud(preview", send_at)
+        self.assertLess(send_at, preview_at)
+        self.assertGreater(hud_at, send_at)
+        self.assertIn("vcam.send(frame)", engine)
+        self.assertIn("preview = frame.copy()", engine)
+        self.assertIn("Diagnostic", engine)
+
     def test_obs_instructions_match_direct_backend_usage(self):
         text = (self.html + self.main + self.help).lower()
         self.assertIn("close obs before starting", text)
