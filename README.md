@@ -4,21 +4,20 @@ It's Giving tracks webcam expressions and overlays a matching meme reaction. The
 
 ## Windows portable build
 
-The GitHub Actions workflow builds two artifacts on Windows:
+The Windows workflow builds a portable Electron desktop executable with the Python camera engine bundled inside. The distributable is a single `.exe`; users do not need to extract a ZIP or run an installer.
 
-- `ItsGiving-Engine-Windows-v0.3.0` — standalone Python engine.
-- `ItsGiving-Electron-Portable-Windows-v0.3.0` — desktop controller with the engine bundled.
+The workflow keeps a zipped GitHub Actions artifact for CI diagnostics and uploads the actual `.exe` to a public Vercel Blob store using multipart upload. The website's `/download` endpoint redirects directly to the public `.exe` URL.
 
-Open the **Windows portable app CI** workflow, select a successful run, and download the Electron portable artifact. Extract the ZIP and run `ItsGiving-Desktop-0.3.0-Windows.exe`. There is no setup wizard or installer.
+### Required publishing configuration
 
-## Website download — no secrets required
+1. In the Vercel project connected to `screenfilter.vercel.app`, create a **public Vercel Blob** store.
+2. Copy its read/write token and add it to GitHub repository **Settings → Secrets and variables → Actions** as `BLOB_READ_WRITE_TOKEN`.
+3. Run the Windows workflow on `main`. It uploads `its-giving/ItsGiving-Desktop-0.3.0-Windows.exe` and prints the resulting direct download URL.
+4. Add that URL to the Vercel project's **Production** environment variables as `WINDOWS_APP_URL`, then redeploy the website.
 
-The website's `/download` route redirects to a public [nightly.link](https://nightly.link/) artifact URL for the latest successful Windows CI build on `main`. Visitors do not need to sign in to GitHub. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The website requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret. nightly.link is an external service that brokers anonymous downloads of public GitHub Actions artifacts.
+The Blob object uses a stable pathname and is overwritten by each successful main build. The Vercel website never proxies the large executable through a serverless function; it redirects the browser to the public Blob download URL.
 
-Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The download link automatically follows the newest successful build; no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the external download service reports that the artifact is unavailable.
-
-The website itself continues to deploy from `main` through the existing Vercel Git integration. That integration is configured in the Vercel dashboard and does not require repository secrets.
-
+`nightly.link` is not used for the direct EXE because it downloads GitHub Actions artifacts as ZIP archives. The public Blob URL serves the `.exe` itself.
 
 ## OBS Virtual Camera
 
