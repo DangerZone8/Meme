@@ -156,3 +156,12 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify live website redirect and downloaded Windows EXE
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          ./tools/verify_published_download.ps1 `
+            -BuiltExe "desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe" `
+            -DownloadEndpoint "https://screenfilter.vercel.app/download" `
+            -ExpectedAssetUrl "https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Desktop-0.3.0-Windows.exe"
