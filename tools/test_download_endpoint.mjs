@@ -23,7 +23,7 @@ test("GET redirects to the latest anonymous Windows artifact without secrets", (
   assert.equal(res.code, 302);
   assert.equal(
     res.headers.location,
-    "https://nightly.link/DangerZone8/Meme/workflows/windows-app.yml/main/ItsGiving-Electron-Portable-Windows-v0.3.0.zip"
+    "https://nightly.link/DangerZone8/Meme/workflows/windows-app/main/ItsGiving-Electron-Portable-Windows-v0.3.0.zip"
   );
   assert.match(res.headers["cache-control"], /max-age=60/);
 });
