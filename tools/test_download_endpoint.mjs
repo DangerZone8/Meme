@@ -11,31 +11,18 @@ function response() {
   };
 }
 
-const validUrl = "https://screenfilter.public.blob.vercel-storage.com/its-giving/ItsGiving-Desktop-0.3.0-Windows.exe?download=1";
-test("GET redirects directly to the public portable Windows EXE", () => {
-  process.env.WINDOWS_APP_URL = validUrl;
+const directExe = "https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Desktop-0.3.0-Windows.exe";
+test("GET redirects directly to the portable Windows EXE release asset", () => {
   const res = response(); handler({ method: "GET" }, res);
-  assert.equal(res.code, 302); assert.equal(res.headers.location, validUrl);
-  assert.match(res.headers["cache-control"], /max-age=60/);
-});
-test("HEAD uses the same direct EXE URL", () => {
-  process.env.WINDOWS_APP_URL = validUrl;
-  const res = response(); handler({ method: "HEAD" }, res);
-  assert.equal(res.code, 302); assert.equal(res.headers.location, validUrl);
-});
-test("returns a clear 503 until the direct EXE URL is configured", () => {
-  delete process.env.WINDOWS_APP_URL;
-  const res = response(); handler({ method: "GET" }, res);
-  assert.equal(res.code, 503);
-  assert.equal(res.body, "The direct Windows download is not configured yet.");
+  assert.equal(res.code, 302); assert.equal(res.headers.location, directExe);
   assert.equal(res.headers["cache-control"], "no-store");
 });
-test("rejects non-HTTPS, non-Blob, and non-EXE download targets", () => {
-  for (const invalid of ["http://screenfilter.public.blob.vercel-storage.com/app.exe", "https://example.com/app.exe", "https://screenfilter.public.blob.vercel-storage.com/app.zip"]) {
-    process.env.WINDOWS_APP_URL = invalid;
-    const res = response(); handler({ method: "GET" }, res); assert.equal(res.code, 503, invalid);
-  }
-  delete process.env.WINDOWS_APP_URL;
+test("HEAD redirects to the same direct EXE asset", () => {
+  const res = response(); handler({ method: "HEAD" }, res);
+  assert.equal(res.code, 302); assert.equal(res.headers.location, directExe);
+});
+test("does not require runtime environment variables or storage secrets", () => {
+  assert.doesNotThrow(() => handler({ method: "GET" }, response()));
 });
 test("rejects methods other than GET and HEAD", () => {
   const res = response(); handler({ method: "POST" }, res);
