@@ -14,63 +14,25 @@ function response() {
   };
 }
 
-const originalUrl = process.env.WINDOWS_APP_URL;
-
-test.afterEach(() => {
-  if (originalUrl === undefined) delete process.env.WINDOWS_APP_URL;
-  else process.env.WINDOWS_APP_URL = originalUrl;
-});
-
-test("GET redirects to the public Blob download URL with attachment mode", () => {
-  process.env.WINDOWS_APP_URL =
-    "https://store.public.blob.vercel-storage.com/ItsGiving.exe";
-
+test("GET redirects to the repository-hosted static Windows executable without env vars", () => {
+  delete process.env.WINDOWS_APP_URL;
+  delete process.env.BLOB_READ_WRITE_TOKEN;
+  delete process.env.VERCEL_TOKEN;
   const res = response();
   handler({ method: "GET" }, res);
-
   assert.equal(res.code, 307);
-  assert.equal(
-    res.headers.location,
-    "https://store.public.blob.vercel-storage.com/ItsGiving.exe?download=1"
-  );
-  assert.equal(res.headers["cache-control"], "no-store");
-  assert.equal(res.body, undefined);
+  assert.equal(res.headers.location, "/downloads/ItsGiving.exe");
+  assert.match(res.headers["cache-control"], /public/);
 });
 
-test("HEAD uses the same download redirect", () => {
-  process.env.WINDOWS_APP_URL =
-    "https://store.public.blob.vercel-storage.com/ItsGiving.exe?download=1";
-
+test("HEAD uses the same static download destination", () => {
   const res = response();
   handler({ method: "HEAD" }, res);
-
   assert.equal(res.code, 307);
-  assert.equal(res.headers.location, process.env.WINDOWS_APP_URL);
-});
-
-test("missing published URL returns 503", () => {
-  delete process.env.WINDOWS_APP_URL;
-  const res = response();
-  handler({ method: "GET" }, res);
-  assert.equal(res.code, 503);
-});
-
-test("rejects non-Blob and non-HTTPS redirect targets", () => {
-  for (const value of [
-    "https://example.com/ItsGiving.exe",
-    "http://store.public.blob.vercel-storage.com/ItsGiving.exe",
-    "https://store.public.blob.vercel-storage.com/other.exe"
-  ]) {
-    process.env.WINDOWS_APP_URL = value;
-    const res = response();
-    handler({ method: "GET" }, res);
-    assert.equal(res.code, 500, value);
-  }
+  assert.equal(res.headers.location, "/downloads/ItsGiving.exe");
 });
 
 test("rejects methods other than GET and HEAD", () => {
-  process.env.WINDOWS_APP_URL =
-    "https://store.public.blob.vercel-storage.com/ItsGiving.exe";
   const res = response();
   handler({ method: "POST" }, res);
   assert.equal(res.code, 405);
