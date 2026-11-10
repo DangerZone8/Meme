@@ -26,7 +26,6 @@ class RepositoryContractTests(unittest.TestCase):
         cls.html = read("desktop/index.html")
         cls.website = read("index.html")
         cls.api = read("api/download.js")
-        cls.publisher = read("scripts/publish_windows_blob.mjs")
         cls.workflow = read(".github/workflows/windows-app.yml")
         cls.help = read("README.md") + read("desktop/README.md")
 
