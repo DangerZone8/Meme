@@ -33,17 +33,17 @@ TEST_KEYS = "1234567890-=[]"
 FACE_SCALE = 2.0
 HOLD_FRAMES = 10
 ARM = {
-    "spin": 15, "suspicious": 8, "talking_to_wall": 6, "dance": 6, "crashing_out": 4,
-    "open_mouth": 4, "tongue_out": 5, "disgusted": 5,
+    "spin": 8, "suspicious": 4, "talking_to_wall": 3, "dance": 3, "crashing_out": 2,
+    "open_mouth": 2, "tongue_out": 2, "disgusted": 2,
 }
 
 Z = dict(
-    jaw_open=6.0,
-    scream_jaw=3.5,
-    tongue_jaw=3.5,
-    sneer=4.5,
-    disgust=14.0,
-    squint=4.0,
+    jaw_open=3.8,
+    scream_jaw=2.8,
+    tongue_jaw=2.8,
+    sneer=3.0,
+    disgust=9.0,
+    squint=2.8,
 )
 Z_CAP = 8.0
 FLOOR = dict(
@@ -54,9 +54,9 @@ FLOOR = dict(
     squint=0.18,
 )
 T = dict(
-    tongue=0.5,
-    head_turn=0.15,
-    gesture=0.035,
+    tongue=0.32,
+    head_turn=0.11,
+    gesture=0.022,
 )
 
 CALIB_FILE = "calibration.json"
@@ -145,13 +145,13 @@ def preflight(model_path):
 def build_detectors(model_paths):
     face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_landmarker.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_faces=1, output_face_blendshapes=True))
+        running_mode=vision.RunningMode.VIDEO, num_faces=8, output_face_blendshapes=True))
     hand = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["hand_landmarker.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_hands=2))
+        running_mode=vision.RunningMode.VIDEO, num_hands=8))
     pose = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["pose_landmarker_lite.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_poses=1))
+        running_mode=vision.RunningMode.VIDEO, num_poses=8))
     return face, hand, pose
 
 
@@ -680,7 +680,7 @@ def main():
     if args.calibrate:
         face_det = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
             base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_landmarker.task"]),
-            running_mode=vision.RunningMode.VIDEO, num_faces=1, output_face_blendshapes=True))
+            running_mode=vision.RunningMode.VIDEO, num_faces=8, output_face_blendshapes=True))
         try:
             new = run_calibration(cap, face_det, clock, args, W, H, window)
         finally:
@@ -708,10 +708,8 @@ def main():
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
     face_det, hand_det, pose_det = build_detectors(model_paths)
-    motion = Motion()
-    shown, hold, show_hud = None, 0, True
-    arm = {p: 0 for p in POSES}
-    shown_since = 0.0
+    person_state = {}
+    show_hud = True
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
     print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test a pose")
@@ -732,57 +730,87 @@ def main():
             fr = face_det.detect_for_video(mp_img, ts)
             hr = hand_det.detect_for_video(mp_img, ts)
             pr = pose_det.detect_for_video(mp_img, ts)
-            face = Face(fr.face_landmarks[0], fr.face_blendshapes[0] if fr.face_blendshapes else None, W, H) \
-                if fr.face_landmarks else None
-            hands = [Hand(h, W, H) for h in hr.hand_landmarks]
-            body = Body(pr.pose_landmarks[0], W, H) if pr.pose_landmarks else None
-
-            m = measure(face, base) if face is not None else {}
-            tongue = tongue_score(frame, face, hands,
-                                  over("tongue_jaw", m, "z_jaw", "jaw")) if face is not None else 0.0
-            gesture = motion.update(hands, face)
-            raw, dbg = decide(face, hands, body, tongue, gesture, m)
-
-            fired = None
-            for p in POSES:
-                arm[p] = arm[p] + 1 if raw == p else 0
-                if raw == p and arm[p] >= ARM.get(p, 3):
-                    fired = p
+            faces = [
+                Face(landmarks, fr.face_blendshapes[i] if i < len(fr.face_blendshapes) else None, W, H)
+                for i, landmarks in enumerate(fr.face_landmarks)
+            ]
+            # Stable left-to-right ordering keeps each person's state independent in a frame.
+            faces.sort(key=lambda item: item.center[0])
+            all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
+            all_bodies = [Body(p, W, H) for p in pr.pose_landmarks]
             now = time.monotonic()
-            if forced and now < forced_until:
-                fired = forced
-            if fired:
-                if fired != shown:
-                    shown_since = now
-                shown, hold = fired, HOLD_FRAMES
-            elif hold > 0:
-                hold -= 1
+            active_ids = set(range(len(faces)))
+            for person_id in list(person_state):
+                if person_id not in active_ids:
+                    del person_state[person_id]
+
+            shown_items = []
+            for person_id, face in enumerate(faces):
+                # Associate each hand/body with the nearest detected face, so one
+                # person's gestures do not trigger another person's reaction.
+                hands = [
+                    hand for hand in all_hands
+                    if min(range(len(faces)), key=lambda i: dist(hand.palm, faces[i].center)) == person_id
+                    and dist(hand.palm, face.center) < max(face.w * 2.4, 90)
+                ]
+                body = min(all_bodies, key=lambda item: dist(item.shoulders.mean(axis=0), face.center)) \
+                    if all_bodies else None
+                if body is not None and dist(body.shoulders.mean(axis=0), face.center) > face.h * 2.8:
+                    body = None
+
+                state = person_state.setdefault(person_id, {
+                    "motion": Motion(), "shown": None, "hold": 0,
+                    "arm": {pose: 0 for pose in POSES}, "shown_since": now,
+                })
+                m = measure(face, base)
+                tongue = tongue_score(frame, face, hands, over("tongue_jaw", m, "z_jaw", "jaw"))
+                gesture = state["motion"].update(hands, face)
+                raw, dbg = decide(face, hands, body, tongue, gesture, m)
+
+                fired = None
+                for pose in POSES:
+                    state["arm"][pose] = state["arm"][pose] + 1 if raw == pose else 0
+                    if raw == pose and state["arm"][pose] >= ARM.get(pose, 2):
+                        fired = pose
+                if forced and now < forced_until:
+                    fired = forced
+                if fired:
+                    if fired != state["shown"]:
+                        state["shown_since"] = now
+                    state["shown"], state["hold"] = fired, HOLD_FRAMES
+                elif state["hold"] > 0:
+                    state["hold"] -= 1
+                else:
+                    state["shown"] = None
+
+                if state["shown"]:
+                    asset = assets[state["shown"]]
+                    idx = asset.frame_at(int((now - state["shown_since"]) * 1000))
+                    sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
+                    replace_face(frame, sprite, face, scale=1.24)
+                shown_items.append((state["shown"], raw, dbg, face, hands, body))
+
+            # Faces disappearing from view should not leave stale state behind.
+            if show_hud:
+                preview = frame.copy()
+                for shown, raw, dbg, face, hands, body in shown_items:
+                    draw_hud(preview, shown, raw, dbg, face, hands, body, base)
             else:
-                shown = None
-
-            if face is not None:
-                sm_center = 0.7 * sm_center + 0.3 * np.array(face.center, np.float32)
-                sm_h = 0.7 * sm_h + 0.3 * face.h * FACE_SCALE
-
-            if shown and face is not None:
-                asset = assets[shown]
-                idx = asset.frame_at(int((now - shown_since) * 1000))
-                # Size the selected reaction from the current face geometry every frame;
-                # this keeps the full-face replacement attached during head movement.
-                sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
-                replace_face(frame, sprite, face, scale=1.24)
+                preview = frame
 
             if vcam:
                 vcam.send(frame)
                 vcam.sleep_until_next_frame()
 
-            preview = frame
-            if show_hud:
-                preview = frame.copy()
-                draw_hud(preview, shown, raw, dbg, face, hands, body, base)
             cv2.imshow(window, preview)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
+                break
+            # Closing the OpenCV preview with its title-bar X exits the engine too.
+            try:
+                if cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
+                    break
+            except cv2.error:
                 break
             if key == ord("d"):
                 show_hud = not show_hud
@@ -792,8 +820,7 @@ def main():
                     base = new
                     base.save(calib_path)
                     print(f"Saved {CALIB_FILE}.")
-                motion, shown, hold = Motion(), None, 0
-                arm = {p: 0 for p in POSES}
+                person_state.clear()
             elif 0 < key < 256 and chr(key) in TEST_KEYS:
                 forced, forced_until = POSES[TEST_KEYS.index(chr(key))], now + 2.0
     finally:
