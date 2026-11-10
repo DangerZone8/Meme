@@ -14,8 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   windows:
@@ -37,7 +36,6 @@ jobs:
           node --check desktop/preload.cjs
           node --check desktop/renderer.js
           node --check api/download.js
-          node --check scripts/publish_vercel_app.mjs
           node --test tools/test_download_endpoint.mjs
           node -e "JSON.parse(require('fs').readFileSync('desktop/package.json', 'utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"
@@ -133,54 +131,12 @@ jobs:
           name: ItsGiving-Engine-Windows-v0.3.0
           path: dist/ItsGiving.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
       - name: Upload portable Electron desktop app
         uses: actions/upload-artifact@v5
         with:
           name: ItsGiving-Electron-Portable-Windows-v0.3.0
           path: desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
 
-  publish:
-    name: Prepare reviewed website download PR (no Vercel secrets)
-    needs: windows
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Download verified portable Electron app
-        uses: actions/download-artifact@v5
-        with:
-          name: ItsGiving-Electron-Portable-Windows-v0.3.0
-          path: downloaded
-      - name: Create a reviewed PR containing the static download
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          file="downloaded/ItsGiving-Desktop-0.3.0-Windows.exe"
-          test -s "$file"
-          bytes="$(stat -c '%s' "$file")"
-          max_bytes=$((95 * 1024 * 1024))
-          if [ "$bytes" -gt "$max_bytes" ]; then
-            echo "::error::The portable app is $bytes bytes; the secretless Git-backed download supports files up to 95 MiB. Reduce the packaged app size before publishing."
-            exit 1
-          fi
-          mkdir -p public/downloads
-          cp "$file" public/downloads/ItsGiving.exe
-          branch="automated/windows-download-${GITHUB_RUN_ID}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch --create "$branch"
-          git add public/downloads/ItsGiving.exe
-          git commit -m "Publish verified Windows portable app"
-          git push --set-upstream origin "$branch"
-          gh pr create --base main --head "$branch" --title "Publish Windows portable app download" --body "Automated publication from Windows CI run $GITHUB_RUN_ID. The executable was built and smoke-tested by the Windows job. Merge this PR to publish it as a static Vercel asset. No Vercel secrets or Blob storage are used."
-          # GITHUB_TOKEN-created PRs do not automatically trigger pull_request
-          # workflows. Explicitly dispatch this workflow on the PR branch so
-          # the exact commit receives a fresh Windows build/test run.
-          gh workflow run windows-app.yml --ref "$branch"
