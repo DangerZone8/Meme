@@ -6,18 +6,13 @@ It's Giving tracks webcam expressions and overlays a matching meme reaction. The
 
 The Windows workflow builds a portable Electron desktop executable with the Python camera engine bundled inside. The distributable is a single `.exe`; users do not need to extract a ZIP or run an installer.
 
-The workflow keeps a zipped GitHub Actions artifact for CI diagnostics and uploads the actual `.exe` to a public Vercel Blob store using multipart upload. The website's `/download` endpoint redirects directly to the public `.exe` URL.
+On successful builds to `main`, GitHub Actions publishes the `.exe` itself as a GitHub Release asset using the automatically provided `GITHUB_TOKEN`. No manually configured secrets, Vercel Blob store, or Vercel environment variables are required.
 
-### Required publishing configuration
+The ScreenFilter website's `/download` endpoint redirects directly to the latest `.exe` asset:
 
-1. In the Vercel project connected to `screenfilter.vercel.app`, create a **public Vercel Blob** store.
-2. Copy its read/write token and add it to GitHub repository **Settings → Secrets and variables → Actions** as `BLOB_READ_WRITE_TOKEN`.
-3. Run the Windows workflow on `main`. It uploads `its-giving/ItsGiving-Desktop-0.3.0-Windows.exe` and prints the resulting direct download URL.
-4. Add that URL to the Vercel project's **Production** environment variables as `WINDOWS_APP_URL`, then redeploy the website.
+`https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Desktop-0.3.0-Windows.exe`
 
-The Blob object uses a stable pathname and is overwritten by each successful main build. The Vercel website never proxies the large executable through a serverless function; it redirects the browser to the public Blob download URL.
-
-`nightly.link` is not used for the direct EXE because it downloads GitHub Actions artifacts as ZIP archives. The public Blob URL serves the `.exe` itself.
+The Release exists as the binary-hosting mechanism, but users clicking the website's Download button are sent directly to the executable rather than to the Release page. GitHub Actions artifacts remain available separately for CI diagnostics.
 
 ## OBS Virtual Camera
 
