@@ -14,7 +14,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   windows:
@@ -142,53 +143,44 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Publish Windows app to Vercel Blob and deploy download route
+    name: Prepare reviewed website download PR (no Vercel secrets)
     needs: windows
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-      - name: Set up Node.js
-        uses: actions/setup-node@v5
         with:
-          node-version: "22"
-      - name: Download verified Windows engine artifact
+          fetch-depth: 0
+      - name: Download verified portable Electron app
         uses: actions/download-artifact@v5
         with:
-          name: ItsGiving-Engine-Windows-v0.3.0
-          path: dist
-      - name: Install website publishing dependency
-        run: npm install --no-audit --no-fund
-      - name: Upload executable to public Vercel Blob
-        id: blob
+          name: ItsGiving-Electron-Portable-Windows-v0.3.0
+          path: downloaded
+      - name: Create a reviewed PR containing the static download
         env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          node scripts/publish_vercel_app.mjs dist/ItsGiving.exe | tee publish-output.txt
-          url="$(sed -n 's/^WINDOWS_APP_URL=//p' publish-output.txt)"
-          test -n "$url"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-      - name: Configure production download URL and deploy website
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          WINDOWS_APP_URL: ${{ steps.blob.outputs.url }}
-        run: |
-          set -euo pipefail
-          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID WINDOWS_APP_URL; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required GitHub Actions secret/output: $name"
-              exit 1
-            fi
-          done
-          npm install --global vercel@latest
-          vercel link --yes --token "$VERCEL_TOKEN"
-          if vercel env ls production --token "$VERCEL_TOKEN" | grep -q "WINDOWS_APP_URL"; then
-            vercel env update WINDOWS_APP_URL production --value "$WINDOWS_APP_URL" --yes --token "$VERCEL_TOKEN"
-          else
-            vercel env add WINDOWS_APP_URL production --value "$WINDOWS_APP_URL" --yes --token "$VERCEL_TOKEN"
+          file="downloaded/ItsGiving-Desktop-0.3.0-Windows.exe"
+          test -s "$file"
+          bytes="$(stat -c '%s' "$file")"
+          max_bytes=$((95 * 1024 * 1024))
+          if [ "$bytes" -gt "$max_bytes" ]; then
+            echo "::error::The portable app is $bytes bytes; the secretless Git-backed download supports files up to 95 MiB. Reduce the packaged app size before publishing."
+            exit 1
           fi
-          vercel deploy --prod --yes --token "$VERCEL_TOKEN"
+          mkdir -p public/downloads
+          cp "$file" public/downloads/ItsGiving.exe
+          branch="automated/windows-download-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --create "$branch"
+          git add public/downloads/ItsGiving.exe
+          git commit -m "Publish verified Windows portable app"
+          git push --set-upstream origin "$branch"
+          gh pr create --base main --head "$branch" --title "Publish Windows portable app download" --body "Automated publication from Windows CI run $GITHUB_RUN_ID. The executable was built and smoke-tested by the Windows job. Merge this PR to publish it as a static Vercel asset. No Vercel secrets or Blob storage are used."
+          # GITHUB_TOKEN-created PRs do not automatically trigger pull_request
+          # workflows. Explicitly dispatch this workflow on the PR branch so
+          # the exact commit receives a fresh Windows build/test run.
+          gh workflow run windows-app.yml --ref "$branch"
