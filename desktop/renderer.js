@@ -1,7 +1,8 @@
 const $ = id => document.getElementById(id);
 const log = line => { const box=$("logs"); box.textContent += "\n"+line; box.scrollTop=box.scrollHeight; };
 function state(running) {
-  $("status").textContent = running ? "● Running" : "● Stopped";
+  $("status").textContent = running ? "Running" : "Stopped";
+  $("status").classList.toggle("running", running);
   $("start").disabled = running; $("stop").disabled = !running;
 }
 $("start").addEventListener("click", async () => {
