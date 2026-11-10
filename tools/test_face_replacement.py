@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import assign_track_ids, associate_people, decide, enhance_camera_frame, replace_face
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, enhance_camera_frame, load_asset, replace_face)
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -58,6 +58,34 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertEqual(enhanced.dtype, frame.dtype)
         self.assertGreater(float(np.mean(enhanced)), float(np.mean(frame)))
 
+    def test_expanded_reaction_library_loads_every_asset_before_camera_loop(self):
+        self.assertEqual(len(POSES), 26)
+        loaded = {pose: load_asset(pose) for pose in POSES}
+        self.assertEqual(set(loaded), set(POSES))
+        self.assertTrue(all(asset.frames and asset.total > 0 for asset in loaded.values()))
+
+    def test_shocked_expression_selects_shocked_meme(self):
+        face = SimpleNamespace(w=90.0, center=(150.0, 120.0), nose=(150.0, 105.0),
+                               mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0), h=110.0)
+        measurements = {
+            'jaw': 0.42, 'z_jaw': 1.0, 'sneer': 0.0, 'z_sneer': 0.0,
+            'z_brow': 0.0, 'z_frown': 0.0, 'z_lip': 0.0, 'squint': 0.0,
+            'z_squint': 0.0, 'turn': 0.0, 'z_disgust': 0.0,
+            'smile': 0.0, 'pucker': 0.0, 'eyes_wide': 0.75, 'brow_up': 0.1,
+        }
+        self.assertEqual(decide(face, [], None, 0.0, 0.0, measurements)[0], 'shocked')
+
+    def test_head_movement_and_clap_are_detected(self):
+        motion = Motion()
+        face_a = SimpleNamespace(w=100.0, center=(100.0, 100.0))
+        face_b = SimpleNamespace(w=100.0, center=(100.0, 106.0))
+        motion.update([], face_a)
+        motion.update([], face_b)
+        self.assertTrue(motion.nod)
+        hands = [SimpleNamespace(palm=np.array((90.0, 120.0))),
+                 SimpleNamespace(palm=np.array((120.0, 120.0)))]
+        motion.update(hands, face_b)
+        self.assertTrue(motion.clap)
     def test_decide_accepts_older_measurement_payloads(self):
         face = SimpleNamespace(
             w=80.0, center=(100.0, 100.0), nose=(100.0, 90.0),
@@ -99,7 +127,7 @@ class FaceReplacementTests(unittest.TestCase):
         }
         smile = dict(baseline_measurements, smile=0.7)
         pucker = dict(baseline_measurements, pucker=0.6)
-        self.assertEqual(decide(face, [], None, 0.0, 0.0, smile)[0], "dance")
+        self.assertEqual(decide(face, [], None, 0.0, 0.0, smile)[0], "laughing")
         self.assertEqual(decide(face, [], None, 0.0, 0.0, pucker)[0], "flirty")
 
     def test_expression_selected_meme_is_applied_as_full_face_replacement(self):
