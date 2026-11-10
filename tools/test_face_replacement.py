@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import associate_people, decide, replace_face
+from its_giving_v2 import assign_track_ids, associate_people, decide, replace_face
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -49,6 +49,21 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertIs(assigned[1][1], bodies[1])
         self.assertIs(assigned[0][0][0], hands[0])
         self.assertIs(assigned[1][0][0], hands[1])
+
+    def test_person_track_ids_follow_people_when_they_cross(self):
+        state = {
+            4: {"center": (80.0, 100.0)},
+            9: {"center": (260.0, 100.0)},
+        }
+        # Faces are always supplied left-to-right; after crossing, their order swaps.
+        faces = [
+            SimpleNamespace(center=(110.0, 100.0), w=60.0),
+            SimpleNamespace(center=(230.0, 100.0), w=60.0),
+        ]
+        ids, next_id = assign_track_ids(faces, state, 10)
+        self.assertEqual(ids, [4, 9])
+        self.assertEqual(next_id, 10)
+        self.assertEqual(state[4]["center"], (80.0, 100.0))
 
     def test_common_smile_and_pucker_expressions_trigger_without_calibration(self):
         face = SimpleNamespace(
