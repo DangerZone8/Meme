@@ -75,7 +75,7 @@ class RepositoryContractTests(unittest.TestCase):
         )
         self.assertIn('href="/download"', self.website)
         self.assertEqual(self.web_package.get("type"), "module")
-        self.assertIn('nightly.link/DangerZone8/Meme/workflows/windows-app.yml/main/', self.api)
+        self.assertIn('nightly.link/DangerZone8/Meme/workflows/windows-app/main/', self.api)
         self.assertIn('ItsGiving-Electron-Portable-Windows-v0.3.0.zip', self.api)
         self.assertNotIn("WINDOWS_APP_URL", self.api)
         self.assertNotIn("BLOB_READ_WRITE_TOKEN", self.api)
