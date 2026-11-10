@@ -64,6 +64,11 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ScreenFilter", self.html)
         self.assertIn("assets/screenfilter-mark.svg", self.html)
         self.assertIn("up to 8 faces", self.html)
+        engine = read("its_giving_v2.py")
+        self.assertIn("num_faces=8", engine)
+        self.assertIn("num_hands=8", engine)
+        self.assertIn("num_poses=8", engine)
+        self.assertIn("m[\"smile\"] > 0.52", engine)
         self.assertIn("getWindowProperty(window, cv2.WND_PROP_VISIBLE)", read("its_giving_v2.py"))
         self.assertIn('win.on("close", () => { if (worker) worker.kill(); });', self.main)
 
