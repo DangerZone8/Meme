@@ -16,15 +16,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows:
     name: Build and smoke-test portable Windows app
     runs-on: windows-latest
     timeout-minutes: 45
-    env:
-      BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
     steps:
       - name: Check out source
         uses: actions/checkout@v5
@@ -145,16 +143,17 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Verify direct-download publishing credentials
+      - name: Publish direct Windows EXE as a GitHub Release asset
         if: github.ref == 'refs/heads/main'
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:BLOB_READ_WRITE_TOKEN)) {
-            throw "Missing GitHub Actions secret BLOB_READ_WRITE_TOKEN. Create a public Vercel Blob store and add its read/write token as a repository Actions secret before publishing main."
-          }
-      - name: Install Vercel Blob publisher
-        if: github.ref == 'refs/heads/main'
-        run: npm install --no-save --no-package-lock @vercel/blob@2.8.2
-      - name: Publish direct Windows EXE to Vercel Blob
-        if: github.ref == 'refs/heads/main'
-        run: node scripts/publish_windows_blob.mjs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: screenfilter-v0.3.${{ github.run_number }}
+          name: ScreenFilter Windows v0.3.${{ github.run_number }}
+          body: "Portable Windows desktop app. Download the .exe directly; no ZIP extraction or installer is required."
+          files: desktop/dist/ItsGiving-Desktop-0.3.0-Windows.exe
+          draft: false
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
