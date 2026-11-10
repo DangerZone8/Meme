@@ -1,4 +1,4 @@
-const DOWNLOAD_URL = "https://nightly.link/DangerZone8/Meme/workflows/windows-app.yml/main/ItsGiving-Electron-Portable-Windows-v0.3.0.zip";
+const DOWNLOAD_URL = "https://nightly.link/DangerZone8/Meme/workflows/windows-app/main/ItsGiving-Electron-Portable-Windows-v0.3.0.zip";
 
 export default function handler(req, res) {
   if (req.method !== "GET" && req.method !== "HEAD") {
