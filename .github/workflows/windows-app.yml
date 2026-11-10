@@ -40,6 +40,7 @@ jobs:
           node --check desktop/preload.cjs
           node --check desktop/renderer.js
           node --check api/download.js
+          node --check scripts/publish_windows_blob.mjs
           node --test tools/test_download_endpoint.mjs
           node -e "JSON.parse(require('fs').readFileSync('desktop/package.json', 'utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('package.json', 'utf8'))"
