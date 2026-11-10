@@ -11,20 +11,19 @@ The GitHub Actions workflow builds two artifacts on Windows:
 
 Open the **Windows portable app CI** workflow, select a successful run, and download the Electron portable artifact. Extract the ZIP and run `ItsGiving-Desktop-0.3.0-Windows.exe`. There is no setup wizard or installer.
 
-This repository is public, so its Actions artifacts are downloadable by anyone with access to the repository. They are not private test downloads. Artifacts are retained for 14 days. The workflow does not publish a GitHub Release.
+## Website download — no Vercel secrets required
 
-### Publish the website download
+The website's `/download` route redirects to `/downloads/ItsGiving.exe`, a static executable served by Vercel. The site does not need `WINDOWS_APP_URL`, Vercel Blob, or any Vercel API credentials at runtime.
 
-The **Windows portable app CI** workflow has a manual publish mode. To publish the verified engine to Vercel Blob, update the production download URL, and deploy the website, configure these GitHub Actions repository secrets:
+To publish an updated Windows app:
 
-- `BLOB_READ_WRITE_TOKEN` — write token for the Vercel Blob store.
-- `VERCEL_TOKEN` — Vercel access token.
-- `VERCEL_ORG_ID` — Vercel team/org ID that owns the website project.
-- `VERCEL_PROJECT_ID` — ID of the Vercel project serving the website.
+1. Run **Actions → Windows portable app CI → Run workflow** on `main`.
+2. The workflow builds and verifies the portable Electron app, then opens a PR containing the executable under `public/downloads/ItsGiving.exe`.
+3. Review and merge that PR. The existing Vercel Git integration deploys the static file with the website.
 
-Then open **Actions → Windows portable app CI → Run workflow**, select the `main` branch, and run it. The publish job rebuilds the app, uploads the verified executable with multipart upload, configures `WINDOWS_APP_URL` for Production, and deploys the website. Pull-request runs never publish or modify production settings.
+The publishing workflow uses GitHub's automatically provided `GITHUB_TOKEN`; it does not require `BLOB_READ_WRITE_TOKEN`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID`. The generated executable must remain below GitHub's 100 MB per-file limit. If it exceeds the configured safety limit, publication stops with a clear error instead of creating a broken PR.
 
-The public `/download` route redirects directly to the Blob download URL so the serverless function does not buffer the entire executable. The Blob URL must be a public Vercel Blob URL for `ItsGiving.exe`.
+The website itself remains deployable from `main` through the existing Vercel Git integration. If that integration is disconnected, reconnect the GitHub repository in Vercel; no deployment secrets need to be added to this repository.
 
 ## OBS Virtual Camera
 
