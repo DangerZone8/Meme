@@ -669,6 +669,7 @@ def measure(face, base):
         "pucker": face.b("mouthPucker"),
         "eyes_wide": pair("eyeWide"),
         "brow_up": face.b("browInnerUp"),
+        "wink": abs(face.b("eyeBlinkLeft") - face.b("eyeBlinkRight")),
     }
     cap = lambda v: min(v, Z_CAP)
     m["z_disgust"] = 2 * cap(m["z_sneer"]) + cap(m["z_brow"]) + cap(m["z_frown"]) + cap(m["z_lip"])
@@ -734,6 +735,8 @@ def decide(face, hands, body, tongue, gesture, m):
         return "crying", d
     if m.get("brow_up", 0.0) > 0.42 and m.get("eyes_wide", 0.0) > 0.22:
         return "confused", d
+    if m.get("wink", 0.0) > 0.38:
+        return "wink", d
     if m.get("pucker", 0.0) > 0.38:
         return "flirty", d
     if m.get("smile", 0.0) > 0.52:
