@@ -480,6 +480,29 @@ class Body:
         shoulder_y = float(self.shoulders[:, 1].mean())
         self.elbows_up = self.seen and bool((self.elbows[:, 1] < shoulder_y).all())
 
+def associate_people(faces, hands, bodies):
+    """Assign each detected hand/body to at most one nearest face."""
+    result = []
+    if not faces:
+        return result
+    hand_groups = [[] for _ in faces]
+    body_groups = [[] for _ in faces]
+    for hand in hands:
+        index = min(range(len(faces)), key=lambda i: dist(hand.palm, faces[i].center))
+        if dist(hand.palm, faces[index].center) < max(faces[index].w * 2.4, 90):
+            hand_groups[index].append(hand)
+    for body in bodies:
+        center = body.shoulders.mean(axis=0)
+        index = min(range(len(faces)), key=lambda i: dist(center, faces[i].center))
+        if dist(center, faces[index].center) < faces[index].h * 2.8:
+            body_groups[index].append(body)
+    for i in range(len(faces)):
+        nearest_body = min(body_groups[i], key=lambda item: dist(item.shoulders.mean(axis=0), faces[i].center)) \
+            if body_groups[i] else None
+        result.append((hand_groups[i], nearest_body))
+    return result
+
+
 
 def tongue_score(frame, face, hands, jaw_ready):
     """Fraction of the mouth opening that reads pink: saturated and lit, unlike teeth or throat."""
@@ -744,19 +767,12 @@ def main():
                 if person_id not in active_ids:
                     del person_state[person_id]
 
+            people = associate_people(faces, all_hands, all_bodies)
             shown_items = []
             for person_id, face in enumerate(faces):
                 # Associate each hand/body with the nearest detected face, so one
                 # person's gestures do not trigger another person's reaction.
-                hands = [
-                    hand for hand in all_hands
-                    if min(range(len(faces)), key=lambda i: dist(hand.palm, faces[i].center)) == person_id
-                    and dist(hand.palm, face.center) < max(face.w * 2.4, 90)
-                ]
-                body = min(all_bodies, key=lambda item: dist(item.shoulders.mean(axis=0), face.center)) \
-                    if all_bodies else None
-                if body is not None and dist(body.shoulders.mean(axis=0), face.center) > face.h * 2.8:
-                    body = None
+                hands, body = people[person_id]
 
                 state = person_state.setdefault(person_id, {
                     "motion": Motion(), "shown": None, "hold": 0,
