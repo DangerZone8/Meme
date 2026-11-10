@@ -4,7 +4,9 @@ name: Windows portable app CI
 # Queue the newer run instead so a packaging check cannot silently disappear.
 concurrency:
   group: windows-app-${{ github.ref }}
-  cancel-in-progress: false
+  # Keep production/main builds safe, but let the newest PR/feature push replace
+  # stale queued builds so rapid commits do not serialize dozens of obsolete runs.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 on:
   push:
