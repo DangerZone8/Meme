@@ -480,6 +480,26 @@ class Body:
         shoulder_y = float(self.shoulders[:, 1].mean())
         self.elbows_up = self.seen and bool((self.elbows[:, 1] < shoulder_y).all())
 
+def assign_track_ids(faces, person_state, next_id):
+    """Match faces to prior-frame centers so reactions stay with people as they move."""
+    available = set(person_state)
+    ids = []
+    for face in faces:
+        match = None
+        if available:
+            candidate = min(available, key=lambda key: dist(face.center, person_state[key]["center"]))
+            if dist(face.center, person_state[candidate]["center"]) <= max(face.w * 1.8, 100):
+                match = candidate
+                available.remove(candidate)
+        if match is None:
+            match = next_id
+            next_id += 1
+        ids.append(match)
+    for stale_id in available:
+        del person_state[stale_id]
+    return ids, next_id
+
+
 def associate_people(faces, hands, bodies):
     """Assign each detected hand/body to at most one nearest face."""
     result = []
@@ -747,6 +767,7 @@ def main():
 
     face_det, hand_det, pose_det = build_detectors(model_paths)
     person_state = {}
+    next_person_id = 0
     show_hud = True
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
@@ -777,14 +798,10 @@ def main():
             all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
             all_bodies = [Body(p, W, H) for p in pr.pose_landmarks]
             now = time.monotonic()
-            active_ids = set(range(len(faces)))
-            for person_id in list(person_state):
-                if person_id not in active_ids:
-                    del person_state[person_id]
-
+            face_ids, next_person_id = assign_track_ids(faces, person_state, next_person_id)
             people = associate_people(faces, all_hands, all_bodies)
             shown_items = []
-            for person_id, face in enumerate(faces):
+            for person_id, face in zip(face_ids, faces):
                 # Associate each hand/body with the nearest detected face, so one
                 # person's gestures do not trigger another person's reaction.
                 hands, body = people[person_id]
@@ -792,7 +809,9 @@ def main():
                 state = person_state.setdefault(person_id, {
                     "motion": Motion(), "shown": None, "hold": 0,
                     "arm": {pose: 0 for pose in POSES}, "shown_since": now,
+                    "center": face.center,
                 })
+                state["center"] = face.center
                 m = measure(face, base)
                 tongue = tongue_score(frame, face, hands, over("tongue_jaw", m, "z_jaw", "jaw"))
                 gesture = state["motion"].update(hands, face)
