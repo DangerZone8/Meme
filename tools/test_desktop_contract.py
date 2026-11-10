@@ -26,7 +26,6 @@ class RepositoryContractTests(unittest.TestCase):
         cls.html = read("desktop/index.html")
         cls.website = read("index.html")
         cls.api = read("api/download.js")
-        cls.publisher = read("scripts/publish_vercel_app.mjs")
         cls.help = read("README.md") + read("desktop/README.md")
 
     def test_packaged_files_and_engine_resource_are_declared(self):
@@ -68,7 +67,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("open obs and start its virtual camera", text)
         self.assertNotIn("start obs virtual camera; choose", text)
 
-    def test_website_download_route_is_wired_to_api(self):
+    def test_website_download_route_is_secretless_static_asset(self):
         rewrites = self.vercel.get("rewrites", [])
         self.assertIn(
             {"source": "/download", "destination": "/api/download"},
@@ -76,14 +75,33 @@ class RepositoryContractTests(unittest.TestCase):
         )
         self.assertIn('href="/download"', self.website)
         self.assertEqual(self.web_package.get("type"), "module")
-        self.assertIn('process.env.WINDOWS_APP_URL', self.api)
-        self.assertIn('downloadUrl.protocol !== "https:"', self.api)
-        self.assertIn('downloadUrl.hostname.endsWith(".public.blob.vercel-storage.com")', self.api)
-        self.assertIn('downloadUrl.pathname.endsWith("/ItsGiving.exe")', self.api)
-        self.assertIn('downloadUrl.searchParams.set("download", "1")', self.api)
-        self.assertIn('res.setHeader("Location", downloadUrl.toString())', self.api)
-        self.assertIn("res.status(307).end()", self.api)
+        self.assertNotIn("WINDOWS_APP_URL", self.api)
+        self.assertNotIn("BLOB_READ_WRITE_TOKEN", self.api)
+        self.assertIn('"/downloads/ItsGiving.exe"', self.api)
+        self.assertIn('res.status(307).end()', self.api)
         self.assertIn('req.method !== "GET" && req.method !== "HEAD"', self.api)
+        download_headers = next(
+            entry["headers"] for entry in self.vercel["headers"]
+            if entry["source"] == "/downloads/(.*)"
+        )
+        header_values = {item["key"]: item["value"] for item in download_headers}
+        self.assertIn("attachment", header_values["Content-Disposition"])
+        self.assertEqual(
+            header_values["Content-Type"],
+            "application/vnd.microsoft.portable-executable",
+        )
+
+    def test_manual_publisher_uses_github_token_and_no_vercel_secrets(self):
+        workflow = read(".github/workflows/windows-app.yml")
+        self.assertIn("secrets.GITHUB_TOKEN", workflow)
+        self.assertIn("gh pr create", workflow)
+        self.assertIn("public/downloads/ItsGiving.exe", workflow)
+        self.assertIn("95 * 1024 * 1024", workflow)
+        for secret in (
+            "BLOB_READ_WRITE_TOKEN", "VERCEL_TOKEN",
+            "VERCEL_ORG_ID", "VERCEL_PROJECT_ID",
+        ):
+            self.assertNotIn(secret, workflow)
 
     def test_vercel_ignores_preview_deployments_but_builds_main(self):
         command = self.vercel.get("ignoreCommand", "")
