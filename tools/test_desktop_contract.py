@@ -68,7 +68,10 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("num_faces=8", engine)
         self.assertIn("num_hands=8", engine)
         self.assertIn("num_poses=8", engine)
-        self.assertIn("m[\"smile\"] > 0.52", engine)
+        self.assertIn('m.get("smile", 0.0) > 0.52', engine)
+        self.assertIn("def enhance_camera_frame(frame):", engine)
+        self.assertIn("cv2.createCLAHE", engine)
+        self.assertIn("for person_id, face, (hands, body) in zip(face_ids, faces, people):", engine)
         self.assertIn("getWindowProperty(window, cv2.WND_PROP_VISIBLE)", read("its_giving_v2.py"))
         self.assertIn('win.on("close", () => { if (worker) worker.kill(); });', self.main)
 
