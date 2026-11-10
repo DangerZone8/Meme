@@ -91,9 +91,14 @@ if ($downloaded.Length -ne $source.Length) {
 if ($downloadHash -ne $sourceHash) {
   throw "Downloaded EXE SHA-256 mismatch: expected $sourceHash, got $downloadHash."
 }
-$signature = [System.IO.File]::ReadAllBytes($downloadPath)
-if ($signature.Length -lt 2 -or $signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
-  throw "Downloaded file does not have a Windows PE MZ signature."
+$signatureStream = [System.IO.File]::OpenRead($downloadPath)
+try {
+  $signature = [byte[]]::new(2)
+  if ($signatureStream.Read($signature, 0, 2) -ne 2 -or $signature[0] -ne 0x4D -or $signature[1] -ne 0x5A) {
+    throw "Downloaded file does not have a Windows PE MZ signature."
+  }
+} finally {
+  $signatureStream.Dispose()
 }
 Write-Host "PASS: live endpoint redirected, published EXE downloaded, and bytes match the CI-built EXE."
 Write-Host "Downloaded $($downloaded.Length) bytes; SHA-256 $downloadHash."
