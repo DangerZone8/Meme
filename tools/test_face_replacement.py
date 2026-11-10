@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import assign_track_ids, associate_people, decide, replace_face
+from its_giving_v2 import assign_track_ids, associate_people, decide, enhance_camera_frame, replace_face
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -49,6 +49,26 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertIs(assigned[1][1], bodies[1])
         self.assertIs(assigned[0][0][0], hands[0])
         self.assertIs(assigned[1][0][0], hands[1])
+
+    def test_low_quality_camera_enhancement_preserves_frame_shape_and_type(self):
+        # Dim, flat image simulates a low-light/hazy webcam feed.
+        frame = np.full((120, 160, 3), 38, dtype=np.uint8)
+        enhanced = enhance_camera_frame(frame)
+        self.assertEqual(enhanced.shape, frame.shape)
+        self.assertEqual(enhanced.dtype, frame.dtype)
+        self.assertGreater(float(np.mean(enhanced)), float(np.mean(frame)))
+
+    def test_decide_accepts_older_measurement_payloads(self):
+        face = SimpleNamespace(
+            w=80.0, center=(100.0, 100.0), nose=(100.0, 90.0),
+            mouth=(100.0, 125.0), eye_y=80.0, top=(100.0, 50.0), h=100.0,
+        )
+        measurements = {
+            "jaw": 0.55, "z_jaw": 7.0, "sneer": 0.0, "z_sneer": 0.0,
+            "z_disgust": 0.0, "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+        }
+        self.assertEqual(decide(face, [], None, 0.0, 0.0, measurements)[0], "open_mouth")
 
     def test_person_track_ids_follow_people_when_they_cross(self):
         state = {
