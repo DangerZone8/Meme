@@ -13,6 +13,19 @@ Open the **Windows portable app CI** workflow, select a successful run, and down
 
 This repository is public, so its Actions artifacts are downloadable by anyone with access to the repository. They are not private test downloads. Artifacts are retained for 14 days. The workflow does not publish a GitHub Release.
 
+### Publish the website download
+
+The **Windows portable app CI** workflow has a manual publish mode. To publish the verified engine to Vercel Blob, update the production download URL, and deploy the website, configure these GitHub Actions repository secrets:
+
+- `BLOB_READ_WRITE_TOKEN` — write token for the Vercel Blob store.
+- `VERCEL_TOKEN` — Vercel access token.
+- `VERCEL_ORG_ID` — Vercel team/org ID that owns the website project.
+- `VERCEL_PROJECT_ID` — ID of the Vercel project serving the website.
+
+Then open **Actions → Windows portable app CI → Run workflow**, select the `main` branch, and run it. The publish job rebuilds the app, uploads the verified executable with multipart upload, configures `WINDOWS_APP_URL` for Production, and deploys the website. Pull-request runs never publish or modify production settings.
+
+The public `/download` route redirects directly to the Blob download URL so the serverless function does not buffer the entire executable. The Blob URL must be a public Vercel Blob URL for `ItsGiving.exe`.
+
 ## OBS Virtual Camera
 
 1. Install OBS Studio once so its Virtual Camera device/driver is registered.

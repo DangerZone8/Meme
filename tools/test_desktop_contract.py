@@ -77,7 +77,12 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn('href="/download"', self.website)
         self.assertEqual(self.web_package.get("type"), "module")
         self.assertIn('process.env.WINDOWS_APP_URL', self.api)
-        self.assertIn('url.protocol !== "https:"', self.api)
+        self.assertIn('downloadUrl.protocol !== "https:"', self.api)
+        self.assertIn('downloadUrl.hostname.endsWith(".public.blob.vercel-storage.com")', self.api)
+        self.assertIn('downloadUrl.pathname.endsWith("/ItsGiving.exe")', self.api)
+        self.assertIn('downloadUrl.searchParams.set("download", "1")', self.api)
+        self.assertIn('res.setHeader("Location", downloadUrl.toString())', self.api)
+        self.assertIn("res.status(307).end()", self.api)
         self.assertIn('req.method !== "GET" && req.method !== "HEAD"', self.api)
 
     def test_vercel_ignores_preview_deployments_but_builds_main(self):
@@ -91,7 +96,10 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_vercel_publisher_matches_download_endpoint_contract(self):
         self.assertIn('put("ItsGiving.exe"', self.publisher)
-        self.assertIn('console.log("WINDOWS_APP_URL=" + blob.url)', self.publisher)
+        self.assertIn("createReadStream(filePath)", self.publisher)
+        self.assertIn("multipart: true", self.publisher)
+        self.assertIn("fileInfo.size < 50_000_000", self.publisher)
+        self.assertIn('console.log("WINDOWS_APP_URL=" + blob.downloadUrl)', self.publisher)
         self.assertNotIn("VERCEL_INSTALLER_URL", self.publisher)
         self.assertNotIn("ItsGiving-Setup.exe", self.publisher)
 

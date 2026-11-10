@@ -4,32 +4,36 @@ export default async function handler(req, res) {
     return res.status(405).end("Method not allowed");
   }
 
-  const target = process.env.WINDOWS_APP_URL;
-  if (!target) {
-    return res.status(503).send("The portable Windows app is not published yet.");
+  const configuredUrl = process.env.WINDOWS_APP_URL;
+  if (!configuredUrl) {
+    return res.status(503).send("The portable Windows app has not been published yet.");
   }
 
-  let url;
+  let downloadUrl;
   try {
-    url = new URL(target);
+    downloadUrl = new URL(configuredUrl);
   } catch {
     return res.status(500).send("Windows app URL is misconfigured.");
   }
-  if (url.protocol !== "https:") {
-    return res.status(500).send("Windows app URL must use HTTPS.");
+
+  // Only redirect to the public Vercel Blob store used by the publishing
+  // workflow. This prevents WINDOWS_APP_URL from becoming an open redirect.
+  if (
+    downloadUrl.protocol !== "https:" ||
+    !downloadUrl.hostname.endsWith(".public.blob.vercel-storage.com") ||
+    !downloadUrl.pathname.endsWith("/ItsGiving.exe")
+  ) {
+    return res.status(500).send("Windows app URL must point to the published ItsGiving.exe Vercel Blob.");
   }
 
-  try {
-    const upstream = await fetch(url, { method: req.method, redirect: "follow" });
-    if (!upstream.ok) return res.status(502).send("The Windows app is temporarily unavailable.");
-    res.setHeader("Content-Type", "application/vnd.microsoft.portable-executable");
-    res.setHeader("Content-Disposition", 'attachment; filename="ItsGiving.exe"');
-    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
-    const length = upstream.headers.get("content-length");
-    if (length) res.setHeader("Content-Length", length);
-    if (req.method === "HEAD") return res.status(200).end();
-    return res.status(200).send(Buffer.from(await upstream.arrayBuffer()));
-  } catch {
-    return res.status(502).send("Could not retrieve the portable Windows app.");
+  // Vercel Blob's downloadUrl adds this query parameter so browsers receive
+  // Content-Disposition: attachment instead of trying to display the file.
+  if (!downloadUrl.searchParams.has("download")) {
+    downloadUrl.searchParams.set("download", "1");
   }
+
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Location", downloadUrl.toString());
+  return res.status(307).end();
 }
