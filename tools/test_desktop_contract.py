@@ -79,7 +79,7 @@ class RepositoryContractTests(unittest.TestCase):
         engine = read("its_giving_v2.py")
         send_at = engine.index("vcam.send(frame)")
         preview_at = engine.index("cv2.imshow(window, preview)", send_at)
-        hud_at = engine.index("draw_hud(preview", send_at)
+        hud_at = engine.index("draw_hud(preview")
         self.assertLess(hud_at, send_at)
         self.assertLess(send_at, preview_at)
         self.assertIn("vcam.send(frame)", engine)
