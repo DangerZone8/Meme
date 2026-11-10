@@ -692,11 +692,11 @@ def decide(face, hands, body, tongue, gesture, m):
     near = lambda a, b, k: dist(a, b) < k * fw
     elbows_up = bool(body and body.elbows_up)
     d.update(m, gesture=gesture, tongue=tongue, elbows_up=elbows_up)
+    # Shock is the direct first-frame match; reserve crashing_out for the
+    # stronger two-hands-on-head gesture below.
+    if m.get("eyes_wide", 0.0) > 0.30 and m.get("jaw", 0.0) > 0.18:
+        return "shocked", d
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
-
-    # Wide-eyed, open-mouth reactions are distinct enough to win over weaker cues.
-    if screaming and m.get("eyes_wide", 0.0) > 0.30:
-        return "crashing_out", d
 
     if len(hands) >= 2:
         a, b = hands[0], hands[1]
