@@ -26,6 +26,8 @@ class RepositoryContractTests(unittest.TestCase):
         cls.html = read("desktop/index.html")
         cls.website = read("index.html")
         cls.api = read("api/download.js")
+        cls.publisher = read("scripts/publish_windows_blob.mjs")
+        cls.workflow = read(".github/workflows/windows-app.yml")
         cls.help = read("README.md") + read("desktop/README.md")
 
     def test_packaged_files_and_engine_resource_are_declared(self):
@@ -67,7 +69,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertNotIn("open obs and start its virtual camera", text)
         self.assertNotIn("start obs virtual camera; choose", text)
 
-    def test_website_download_route_uses_public_github_artifacts(self):
+    def test_website_download_route_uses_direct_public_exe(self):
         rewrites = self.vercel.get("rewrites", [])
         self.assertIn(
             {"source": "/download", "destination": "/api/download"},
@@ -75,11 +77,14 @@ class RepositoryContractTests(unittest.TestCase):
         )
         self.assertIn('href="/download"', self.website)
         self.assertEqual(self.web_package.get("type"), "module")
-        self.assertIn('nightly.link/DangerZone8/Meme/workflows/windows-app/main/', self.api)
-        self.assertIn('ItsGiving-Electron-Portable-Windows-v0.3.0.zip', self.api)
-        self.assertNotIn("WINDOWS_APP_URL", self.api)
-        self.assertNotIn("BLOB_READ_WRITE_TOKEN", self.api)
-        self.assertNotIn("VERCEL_TOKEN", self.api)
+        self.assertIn("process.env.WINDOWS_APP_URL", self.api)
+        self.assertIn(".public.blob.vercel-storage.com", self.api)
+        self.assertIn(".endsWith(\".exe\")", self.api)
+        self.assertNotIn("nightly.link/DangerZone8/Meme/workflows/windows-app/main/", self.api)
+        self.assertNotIn("ItsGiving-Electron-Portable-Windows-v0.3.0.zip", self.api)
+        self.assertIn("BLOB_READ_WRITE_TOKEN", self.workflow)
+        self.assertIn("multipart: true", self.publisher)
+        self.assertIn("ItsGiving-Desktop-0.3.0-Windows.exe", self.publisher)
         self.assertIn('res.status(302).end()', self.api)
 
     def test_vercel_ignores_preview_deployments_but_builds_main(self):
