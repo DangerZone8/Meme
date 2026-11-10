@@ -20,12 +20,13 @@ function createWindow() {
   win = new BrowserWindow({
     width: 900, height: 680, minWidth: 760, minHeight: 580,
     backgroundColor: "#101018",
-    title: "It's Giving",
+    title: "ScreenFilter",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true, nodeIntegration: false, sandbox: true
     }
   });
+  win.on("close", () => { if (worker) worker.kill(); });
   win.loadFile(path.join(__dirname, "index.html"));
 }
 function executablePath() {
