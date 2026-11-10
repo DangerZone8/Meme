@@ -40,6 +40,7 @@ class RepositoryContractTests(unittest.TestCase):
             build["extraResources"],
         )
         self.assertIn("dist:win", self.package["scripts"])
+        self.assertIn("assets/**", build["files"])
 
     def test_preload_renderer_and_main_share_the_same_ipc_contract(self):
         exposed_methods = {
@@ -60,6 +61,11 @@ class RepositoryContractTests(unittest.TestCase):
     def test_controller_html_contains_every_renderer_target(self):
         ids = set(re.findall('id="([^"]+)"', self.html))
         self.assertTrue({"status", "camera", "size", "start", "stop", "obs", "logs"}.issubset(ids))
+        self.assertIn("ScreenFilter", self.html)
+        self.assertIn("assets/screenfilter-mark.svg", self.html)
+        self.assertIn("up to 8 faces", self.html)
+        self.assertIn("getWindowProperty(window, cv2.WND_PROP_VISIBLE)", read("its_giving_v2.py"))
+        self.assertIn('win.on("close", () => { if (worker) worker.kill(); });', self.main)
 
     def test_obs_instructions_match_direct_backend_usage(self):
         text = (self.html + self.main + self.help).lower()
