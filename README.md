@@ -4,21 +4,15 @@ It's Giving tracks webcam expressions and overlays a matching meme reaction. The
 
 ## Windows portable build
 
-The GitHub Actions workflow builds two artifacts on Windows:
+The Windows workflow builds a portable Electron desktop executable with the Python camera engine bundled inside. The distributable is a single `.exe`; users do not need to extract a ZIP or run an installer.
 
-- `ItsGiving-Engine-Windows-v0.3.0` — standalone Python engine.
-- `ItsGiving-Electron-Portable-Windows-v0.3.0` — desktop controller with the engine bundled.
+On successful builds to `main`, GitHub Actions publishes the `.exe` itself as a GitHub Release asset using the automatically provided `GITHUB_TOKEN`. No manually configured secrets, Vercel Blob store, or Vercel environment variables are required.
 
-Open the **Windows portable app CI** workflow, select a successful run, and download the Electron portable artifact. Extract the ZIP and run `ItsGiving-Desktop-0.3.0-Windows.exe`. There is no setup wizard or installer.
+The ScreenFilter website's `/download` endpoint redirects directly to the latest `.exe` asset:
 
-## Website download — no secrets required
+`https://github.com/DangerZone8/Meme/releases/latest/download/ItsGiving-Desktop-0.3.0-Windows.exe`
 
-The website's `/download` route redirects to a public [nightly.link](https://nightly.link/) artifact URL for the latest successful Windows CI build on `main`. Visitors do not need to sign in to GitHub. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The website requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret. nightly.link is an external service that brokers anonymous downloads of public GitHub Actions artifacts.
-
-Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The download link automatically follows the newest successful build; no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the external download service reports that the artifact is unavailable.
-
-The website itself continues to deploy from `main` through the existing Vercel Git integration. That integration is configured in the Vercel dashboard and does not require repository secrets.
-
+The Release exists as the binary-hosting mechanism, but users clicking the website's Download button are sent directly to the executable rather than to the Release page. GitHub Actions artifacts remain available separately for CI diagnostics.
 
 ## OBS Virtual Camera
 
