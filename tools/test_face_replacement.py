@@ -50,6 +50,23 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertIs(assigned[0][0][0], hands[0])
         self.assertIs(assigned[1][0][0], hands[1])
 
+    def test_common_smile_and_pucker_expressions_trigger_without_calibration(self):
+        face = SimpleNamespace(
+            w=90.0, center=(150.0, 120.0), nose=(150.0, 105.0),
+            mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0), h=110.0,
+        )
+        baseline_measurements = {
+            "jaw": 0.0, "z_jaw": 0.0, "sneer": 0.0, "z_sneer": 0.0,
+            "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+            "z_disgust": 0.0, "smile": 0.0, "pucker": 0.0,
+            "eyes_wide": 0.0, "brow_up": 0.0,
+        }
+        smile = dict(baseline_measurements, smile=0.7)
+        pucker = dict(baseline_measurements, pucker=0.6)
+        self.assertEqual(decide(face, [], None, 0.0, 0.0, smile)[0], "dance")
+        self.assertEqual(decide(face, [], None, 0.0, 0.0, pucker)[0], "flirty")
+
     def test_expression_selected_meme_is_applied_as_full_face_replacement(self):
         original = np.full((240, 320, 3), (15, 25, 35), dtype=np.uint8)
         frame = original.copy()
