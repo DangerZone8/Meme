@@ -591,16 +591,9 @@ def decide(face, hands, body, tongue, gesture, m):
     d.update(m, gesture=gesture, tongue=tongue, elbows_up=elbows_up)
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
 
-    # Broader expression coverage: these direct blendshape cues do not require
-    # a personal calibration and catch common reactions missed by jaw/sneer rules.
+    # Wide-eyed, open-mouth reactions are distinct enough to win over weaker cues.
     if screaming and m["eyes_wide"] > 0.30:
         return "crashing_out", d
-    if m["smile"] > 0.52:
-        return "dance", d
-    if m["pucker"] > 0.38:
-        return "flirty", d
-    if m["brow_up"] > 0.42 and m["eyes_wide"] > 0.22:
-        return "suspicious", d
 
     if len(hands) >= 2:
         a, b = hands[0], hands[1]
@@ -630,6 +623,13 @@ def decide(face, hands, body, tongue, gesture, m):
         if h.open and h.palm[1] < face.nose[1] and abs(h.palm[0] - face.nose[0]) > 0.8 * fw:
             return "hand_up", d
 
+    # Additional direct expression cues work without personal calibration.
+    if m["smile"] > 0.52:
+        return "dance", d
+    if m["pucker"] > 0.38:
+        return "flirty", d
+    if m["brow_up"] > 0.42 and m["eyes_wide"] > 0.22:
+        return "suspicious", d
     if tongue > T["tongue"]:
         return "tongue_out", d
     if over("jaw_open", m, "z_jaw", "jaw"):
