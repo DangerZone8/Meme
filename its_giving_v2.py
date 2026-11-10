@@ -122,7 +122,7 @@ def preflight(model_path):
         "from mediapipe.tasks.python import vision\n"
         "vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(\n"
         "    base_options=t.BaseOptions(model_asset_path=sys.argv[1]),\n"
-        "    running_mode=vision.RunningMode.VIDEO, num_faces=1,\n"
+        "    running_mode=vision.RunningMode.VIDEO, num_faces=8,\n"
         "    output_face_blendshapes=True)).close()\n"
     )
     proc = subprocess.run([sys.executable, "-c", code, model_path], capture_output=True, text=True)
@@ -563,6 +563,10 @@ def measure(face, base):
         "squint": max(pair("eyeSquint"), pair("eyeBlink")),
         "z_squint": max(zpair("eyeSquint"), zpair("eyeBlink")),
         "turn": abs(face.turn_signed - base.neutral_turn),
+        "smile": pair("mouthSmile"),
+        "pucker": face.b("mouthPucker"),
+        "eyes_wide": pair("eyeWide"),
+        "brow_up": face.b("browInnerUp"),
     }
     cap = lambda v: min(v, Z_CAP)
     m["z_disgust"] = 2 * cap(m["z_sneer"]) + cap(m["z_brow"]) + cap(m["z_frown"]) + cap(m["z_lip"])
@@ -586,6 +590,17 @@ def decide(face, hands, body, tongue, gesture, m):
     elbows_up = bool(body and body.elbows_up)
     d.update(m, gesture=gesture, tongue=tongue, elbows_up=elbows_up)
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
+
+    # Broader expression coverage: these direct blendshape cues do not require
+    # a personal calibration and catch common reactions missed by jaw/sneer rules.
+    if screaming and m["eyes_wide"] > 0.30:
+        return "crashing_out", d
+    if m["smile"] > 0.52:
+        return "dance", d
+    if m["pucker"] > 0.38:
+        return "flirty", d
+    if m["brow_up"] > 0.42 and m["eyes_wide"] > 0.22:
+        return "suspicious", d
 
     if len(hands) >= 2:
         a, b = hands[0], hands[1]
