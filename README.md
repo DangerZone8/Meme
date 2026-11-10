@@ -13,9 +13,9 @@ Open the **Windows portable app CI** workflow, select a successful run, and down
 
 ## Website download — no secrets required
 
-The website's `/download` route looks up the latest successful Windows CI run on the public GitHub repository and redirects to its portable Electron app artifact. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The endpoint uses GitHub's public API and requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret.
+The website's `/download` route redirects to a public [nightly.link](https://nightly.link/) artifact URL for the latest successful Windows CI build on `main`. Visitors do not need to sign in to GitHub. The artifact is a ZIP; extract it and run `ItsGiving-Desktop-0.3.0-Windows.exe`. The website requires no Vercel environment variables, Vercel Blob, deployment token, or GitHub secret. nightly.link is an external service that brokers anonymous downloads of public GitHub Actions artifacts.
 
-Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The website automatically follows the newest successful build, so no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the download route reports that the app is temporarily unavailable rather than returning a broken link.
+Every successful Windows CI run on `main` uploads a fresh artifact retained for 90 days. The download link automatically follows the newest successful build; no binary needs to be committed to the repository and no GitHub Release is created. If no unexpired successful artifact exists, the external download service reports that the artifact is unavailable.
 
 The website itself continues to deploy from `main` through the existing Vercel Git integration. That integration is configured in the Vercel dashboard and does not require repository secrets.
 
