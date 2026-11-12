@@ -3,10 +3,19 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, enhance_camera_frame, load_asset, replace_face)
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, enhance_camera_frame, load_asset, replace_face)
 
 
 class FaceReplacementTests(unittest.TestCase):
+    def test_live_debug_overlay_draws_face_box_and_tracking_status(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        face = SimpleNamespace(box=(80, 50, 150, 140))
+        draw_hud(frame, "shocked", "shocked", {}, face, [], None,
+                 SimpleNamespace(generic=False), 7, 2)
+        self.assertGreater(int(np.count_nonzero(frame)), 0)
+        # The face rectangle is drawn in the overlay colour at its top edge.
+        self.assertTrue(np.any(np.all(frame[50, 80:151] == (60, 220, 80), axis=1)))
+
     def test_transparent_meme_pixels_never_reveal_camera_frame(self):
         original = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
         frame = original.copy()
