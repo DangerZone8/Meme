@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
-const { spawn } = require("node:child_process");
+const { spawn, execFile } = require("node:child_process");
 const path = require("node:path");
 
 let win;
@@ -59,6 +59,23 @@ function startEngine(options = {}) {
     return { ok: false, message: error.message };
   }
 }
+function setupVirtualCamera() {
+  const fs = require("node:fs");
+  const script = app.isPackaged
+    ? path.join(process.resourcesPath, "VirtualCameraSetup.ps1")
+    : path.resolve(__dirname, "../scripts/setup_virtual_camera.ps1");
+  if (!fs.existsSync(script)) return Promise.resolve({ ok: false, message: "Virtual-camera setup script is missing. Reinstall ScreenFilter." });
+  return new Promise(resolve => {
+    execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script],
+      { windowsHide: true, timeout: 15 * 60 * 1000, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const output = [stdout, stderr].filter(Boolean).join("\\n").trim();
+        if (output) addLog(output);
+        resolve(error ? { ok: false, message: output || error.message } :
+          { ok: true, message: "Virtual-camera setup completed. Restart ScreenFilter and select OBS Virtual Camera in your meeting app." });
+      });
+  });
+}
 function stopEngine() {
   if (!worker) return { ok: true, message: "Meme engine is not running." };
   worker.kill();
@@ -68,13 +85,7 @@ app.whenReady().then(() => {
   ipcMain.handle("engine:start", (_event, options) => startEngine(options));
   ipcMain.handle("engine:stop", () => stopEngine());
   ipcMain.handle("engine:status", () => ({ running: !!worker, logs: workerLog }));
-  ipcMain.handle("app:obs-help", async () => {
-    await dialog.showMessageBox(win, {
-      type: "info", title: "Use It's Giving in a call",
-      message: "Select OBS Virtual Camera in Zoom, Google Meet, Teams, or Discord.",
-      detail: "Install OBS Studio once to register its Virtual Camera device. Close OBS before starting It's Giving: the app sends its processed frames directly to OBS Virtual Camera. Do not also click Start Virtual Camera inside OBS while It's Giving is using the device. If the camera is missing, install or repair OBS Studio, then restart It's Giving and the meeting app. Close other apps using the webcam if the physical camera is unavailable."
-    });
-  });
+  ipcMain.handle("app:virtual-camera-setup", () => setupVirtualCamera());
   createWindow();
 });
 app.on("before-quit", () => { if (worker) worker.kill(); });
