@@ -41,7 +41,8 @@ HOLD_FRAMES = 8
 # accidental triggers from landmark jitter.
 ARM = {pose: 2 for pose in POSES}
 for pose in ("shocked", "laughing", "crying", "confused", "wink", "tongue_out",
-             "open_mouth", "disgusted", "angry", "suspicious"):
+             "open_mouth", "disgusted", "angry", "suspicious", "clapping",
+             "head_nod", "head_shake", "shrug"):
     ARM[pose] = 1
 ARM["spin"] = 3
 
