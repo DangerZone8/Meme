@@ -718,6 +718,15 @@ def over(key, m, zkey, rawkey):
     return m[zkey] >= Z[key] and m[rawkey] >= FLOOR[key]
 
 
+def is_facepalm(hand, face):
+    """True only when a palm is actually over the central face, not raised overhead."""
+    return (
+        abs(hand.palm[0] - face.nose[0]) < 0.55 * face.w
+        and face.top[1] - 0.05 * face.h <= hand.palm[1] <= face.chin[1] + 0.10 * face.h
+        and dist(hand.palm, face.center) < 0.70 * face.w
+    )
+
+
 def decide(face, hands, body, tongue, gesture, m):
     """Return (pose or None, debug dict)."""
     d = {"hands": len(hands)}
@@ -1025,12 +1034,7 @@ def main():
                 elif motion.shrug:
                     raw = "shrug"
                     dbg = {"hands": len(hands), **m, "gesture": gesture}
-                elif any(
-                    abs(h.palm[0] - face.nose[0]) < 0.55 * face.w
-                    and face.top[1] - 0.05 * face.h <= h.palm[1] <= face.chin[1] + 0.10 * face.h
-                    and dist(h.palm, face.center) < 0.70 * face.w
-                    for h in hands
-                ):
+                elif any(is_facepalm(h, face) for h in hands):
                     # A hand merely raised above the forehead is not a facepalm.
                     # Require the palm to occupy the central face area.
                     raw = "facepalm"
