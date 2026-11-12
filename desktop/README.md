@@ -1,12 +1,26 @@
-# It's Giving desktop shell
+# ScreenFilter desktop shell
 
-Electron provides the desktop controller. The Python/MediaPipe engine remains responsible for webcam capture, expression tracking, meme overlays, and virtual-camera frames.
+Electron provides the desktop controller. The Python/MediaPipe engine captures the webcam, applies the reactions, and publishes processed frames to the virtual camera.
 
 ## Windows build
 
-The repository's **Windows portable app CI** workflow builds the Python engine first, copies it into `desktop/resources/ItsGiving.exe`, and packages the Electron app with electron-builder. The portable executable is emitted under `desktop/dist/` and uploaded as the `ItsGiving-Electron-Portable-Windows-v0.3.0` Actions artifact.
+The Windows workflow builds the Python engine, copies it into `desktop/resources/ItsGiving.exe`, and packages the Electron app. The setup helper `scripts/setup_virtual_camera.ps1` is bundled as `VirtualCameraSetup.ps1` so first-run setup works in the portable executable.
 
-For a local build, first create the engine executable at the repository root:
+## Automatic virtual camera setup
+
+The **Set up virtual camera** button runs the bundled PowerShell setup helper. It checks for OBS Studio and installs it silently with Windows Package Manager if needed, then registers the OBS Virtual Camera driver when the package provides its registration script. Windows displays an administrator approval prompt because installing a camera driver requires elevation. Users do not need to open OBS or configure scenes/sources.
+
+After setup, restart ScreenFilter and the meeting app, start the ScreenFilter camera, and choose **OBS Virtual Camera** in the meeting app's camera settings. Do not start OBS's own Virtual Camera output while ScreenFilter is using the device.
+
+## Meeting app instructions
+
+- **Zoom:** Settings → Video & effects → Camera → OBS Virtual Camera.
+- **Google Meet:** More options → Settings → Video → Camera → OBS Virtual Camera. Restart the browser if it was already open during driver installation.
+- **Microsoft Teams:** Settings → Devices → Camera → OBS Virtual Camera; it is also available in pre-join device settings.
+
+Menu names may differ slightly by version. The CI smoke test sends synthetic frames through the OBS backend. It does not verify a physical webcam or prove that frames arrive in a live Zoom/Meet/Teams call; those require an end-to-end Windows test.
+
+## Local build
 
 ```powershell
 pyinstaller --noconfirm --clean --onefile --windowed --name ItsGiving --collect-all mediapipe --collect-all cv2 --collect-all numpy --collect-all PIL --hidden-import pyvirtualcam --add-data "assets;assets" --add-data "models;models" its_giving_v2.py
@@ -16,13 +30,3 @@ Set-Location desktop
 npm install
 npm run dist:win
 ```
-
-The desktop shell launches the engine as a child process and terminates it when the app closes. The webcam preview remains the engine's OpenCV window.
-
-## OBS Virtual Camera
-
-The engine connects directly to `OBS Virtual Camera` using the OBS backend in `pyvirtualcam`. Install OBS Studio once to register that device, then **close OBS before starting It's Giving**. Select **OBS Virtual Camera** in Zoom, Google Meet, Teams, or Discord. Do not also start OBS's own Virtual Camera output while the engine is using the device; both would compete for the same endpoint.
-
-The CI smoke test opens that backend and sends synthetic frames. It does not test a physical webcam or verify reception inside a meeting app. Those require a live Windows test.
-
-Camera use is opt-in: users press Start, can stop the engine, and should tell meeting participants when using effects.
