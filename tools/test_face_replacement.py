@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, draw_untracked_detections, enhance_camera_frame, load_asset, match_face_confidences, replace_face)
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, draw_untracked_detections, enhance_camera_frame, load_asset, match_face_confidences, replace_face, is_facepalm)
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -246,22 +246,13 @@ class FaceReplacementTests(unittest.TestCase):
 
     def test_raised_hand_above_forehead_is_not_facepalm(self):
         face = SimpleNamespace(
-            w=100.0, center=(150.0, 120.0), nose=(150.0, 105.0),
-            mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0),
-            chin=np.array((150.0, 180.0)),
+            w=100.0, h=120.0, center=(150.0, 120.0), nose=(150.0, 105.0),
+            top=(150.0, 60.0), chin=np.array((150.0, 180.0)),
         )
-        measurements = {
-            "jaw": 0.0, "z_jaw": 0.0, "sneer": 0.0, "z_sneer": 0.0,
-            "z_disgust": 0.0, "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
-            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
-            "smile": 0.0, "pucker": 0.0, "eyes_wide": 0.0, "brow_up": 0.0,
-        }
-        raised_hand = SimpleNamespace(
-            palm=np.array((240.0, 20.0)), index=np.array((250.0, 0.0)),
-            thumb=np.array((230.0, 25.0)), open=True, pointing=False,
-        )
-        pose, _ = decide(face, [raised_hand], None, 0.0, 0.0, measurements)
-        self.assertNotEqual(pose, "facepalm")
+        raised_hand = SimpleNamespace(palm=np.array((240.0, 20.0)))
+        face_covering_hand = SimpleNamespace(palm=np.array((150.0, 105.0)))
+        self.assertFalse(is_facepalm(raised_hand, face))
+        self.assertTrue(is_facepalm(face_covering_hand, face))
 
     def test_shrug_only_triggers_when_shoulders_rise(self):
         motion = Motion()
