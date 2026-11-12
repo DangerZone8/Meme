@@ -40,9 +40,10 @@ HOLD_FRAMES = 8
 # need two consecutive frames (about 33–67 ms at normal webcam rates) to avoid
 # accidental triggers from landmark jitter.
 ARM = {pose: 2 for pose in POSES}
-for pose in ("shocked", "laughing", "crying", "confused", "wink", "tongue_out",
-             "open_mouth", "disgusted", "angry", "suspicious", "clapping",
-             "head_nod", "head_shake", "shrug"):
+# Keep expression and sustained-pose selections stable for two frames (~67 ms
+# at 30 fps). One-frame motion events remain immediate so nods/claps still feel
+# responsive without allowing noisy blendshape/hand landmarks to flicker memes.
+for pose in ("clapping", "head_nod", "head_shake", "shrug"):
     ARM[pose] = 1
 ARM["spin"] = 3
 
@@ -543,6 +544,9 @@ class Hand:
         self.vertical = abs(d[1]) > 1.5 * abs(d[0])
         ext = [dist(p[0], p[t]) > 1.2 * dist(p[0], p[t - 2]) for t in (8, 12, 16, 20)]
         self.open = sum(ext) >= 3
+        # A deliberate sideways index point: index extended, remaining fingers
+        # curled. This is distinct from general hand movement or a thumbs-up.
+        self.pointing = ext[0] and not any(ext[1:])
 
 
 class Body:
@@ -670,7 +674,9 @@ class Motion:
             shoulders_y = float(body.shoulders[:, 1].mean())
             relative = (face.center[1] - shoulders_y) / self.fw
             if self.prev_body is not None:
-                self.shrug = abs(relative - self.prev_body) > 0.045
+                # A shrug raises the shoulders relative to the face. Absolute
+                # change also classified leaning/slouching as a shrug.
+                self.shrug = relative - self.prev_body > 0.055
             self.prev_body = relative
         if len(cur) >= 2:
             current_distance = dist(cur[0], cur[1])
@@ -710,6 +716,15 @@ def measure(face, base):
 def over(key, m, zkey, rawkey):
     """Sigma above your neutral AND a raw floor, so a tiny sigma can't become a hair trigger."""
     return m[zkey] >= Z[key] and m[rawkey] >= FLOOR[key]
+
+
+def is_facepalm(hand, face):
+    """True only when a palm is actually over the central face, not raised overhead."""
+    return (
+        abs(hand.palm[0] - face.nose[0]) < 0.55 * face.w
+        and face.top[1] - 0.05 * face.h <= hand.palm[1] <= face.chin[1] + 0.10 * face.h
+        and dist(hand.palm, face.center) < 0.70 * face.w
+    )
 
 
 def decide(face, hands, body, tongue, gesture, m):
@@ -782,8 +797,16 @@ def decide(face, hands, body, tongue, gesture, m):
         return "open_mouth", d
     if over("sneer", m, "z_sneer", "sneer") or m["z_disgust"] >= Z["disgust"]:
         return "disgusted", d
-    if hands and gesture > T["gesture"]:
-        return "talking_to_wall", d
+    # Do not map generic hand motion to "talking_to_wall": waving, thumbs-up,
+    # adjusting hair, and moving into frame all raised Motion.energy and caused
+    # the brick-wall meme in the supplied recording. Require a clear sideways
+    # index-point gesture instead.
+    for hand in hands:
+        dx = float(hand.index[0] - hand.palm[0])
+        dy = float(hand.index[1] - hand.palm[1])
+        points_away = (hand.index[0] - face.nose[0]) * dx > 0
+        if hand.pointing and abs(dx) > 0.45 * fw and abs(dy) < 0.35 * fw and points_away:
+            return "talking_to_wall", d
     if m["turn"] > T["head_turn"] and over("squint", m, "z_squint", "squint"):
         return "suspicious", d
     return None, d
@@ -1011,7 +1034,9 @@ def main():
                 elif motion.shrug:
                     raw = "shrug"
                     dbg = {"hands": len(hands), **m, "gesture": gesture}
-                elif any(h.palm[1] < face.top[1] + 0.25 * face.h for h in hands):
+                elif any(is_facepalm(h, face) for h in hands):
+                    # A hand merely raised above the forehead is not a facepalm.
+                    # Require the palm to occupy the central face area.
                     raw = "facepalm"
                     dbg = {"hands": len(hands), **m, "gesture": gesture}
                 else:
