@@ -40,6 +40,7 @@ class RepositoryContractTests(unittest.TestCase):
             build["extraResources"],
         )
         self.assertIn("dist:win", self.package["scripts"])
+        self.assertIn("assets/**", build["files"])
 
     def test_preload_renderer_and_main_share_the_same_ipc_contract(self):
         exposed_methods = {
@@ -60,6 +61,30 @@ class RepositoryContractTests(unittest.TestCase):
     def test_controller_html_contains_every_renderer_target(self):
         ids = set(re.findall('id="([^"]+)"', self.html))
         self.assertTrue({"status", "camera", "size", "start", "stop", "obs", "logs"}.issubset(ids))
+        self.assertIn("ScreenFilter", self.html)
+        self.assertIn("assets/screenfilter-mark.svg", self.html)
+        self.assertIn("up to 8 faces", self.html)
+        engine = read("its_giving_v2.py")
+        self.assertIn("num_faces=8", engine)
+        self.assertIn("num_hands=8", engine)
+        self.assertIn("num_poses=8", engine)
+        self.assertIn('m.get("smile", 0.0) > 0.52', engine)
+        self.assertIn("def enhance_camera_frame(frame):", engine)
+        self.assertIn("cv2.createCLAHE", engine)
+        self.assertIn("for person_id, face, (hands, body) in zip(face_ids, faces, people):", engine)
+        self.assertIn("getWindowProperty(window, cv2.WND_PROP_VISIBLE)", read("its_giving_v2.py"))
+        self.assertIn('win.on("close", () => { if (worker) worker.kill(); });', self.main)
+
+    def test_obs_virtual_camera_receives_clean_frame_without_hud_dots(self):
+        engine = read("its_giving_v2.py")
+        send_at = engine.index("vcam.send(frame)")
+        preview_at = engine.index("cv2.imshow(window, preview)", send_at)
+        hud_at = engine.index("draw_hud(preview")
+        self.assertLess(hud_at, send_at)
+        self.assertLess(send_at, preview_at)
+        self.assertIn("vcam.send(frame)", engine)
+        self.assertIn("preview = frame.copy()", engine)
+        self.assertIn("Diagnostic", engine)
 
     def test_obs_instructions_match_direct_backend_usage(self):
         text = (self.html + self.main + self.help).lower()

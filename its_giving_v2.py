@@ -27,23 +27,25 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision
 
 POSES = ["time_out", "heart", "cover_nose", "crashing_out", "dance", "nose_closed", "flirty", "hand_up",
-         "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin"]
+         "tongue_out", "open_mouth", "disgusted", "talking_to_wall", "suspicious", "spin",
+         "shocked", "laughing", "crying", "confused", "facepalm", "clapping", "head_nod",
+         "head_shake", "shrug", "arms_up", "angry", "wink"]
 TEST_KEYS = "1234567890-=[]"
 
 FACE_SCALE = 2.0
-HOLD_FRAMES = 10
-ARM = {
-    "spin": 15, "suspicious": 8, "talking_to_wall": 6, "dance": 6, "crashing_out": 4,
-    "open_mouth": 4, "tongue_out": 5, "disgusted": 5,
-}
+HOLD_FRAMES = 8
+# Trigger on the first confident frame. Assets are preloaded at startup, so
+# reaction changes never wait for disk access.
+ARM = {pose: 1 for pose in POSES}
+ARM["spin"] = 3
 
 Z = dict(
-    jaw_open=6.0,
-    scream_jaw=3.5,
-    tongue_jaw=3.5,
-    sneer=4.5,
-    disgust=14.0,
-    squint=4.0,
+    jaw_open=3.8,
+    scream_jaw=2.8,
+    tongue_jaw=2.8,
+    sneer=3.0,
+    disgust=9.0,
+    squint=2.8,
 )
 Z_CAP = 8.0
 FLOOR = dict(
@@ -54,9 +56,9 @@ FLOOR = dict(
     squint=0.18,
 )
 T = dict(
-    tongue=0.5,
-    head_turn=0.15,
-    gesture=0.035,
+    tongue=0.32,
+    head_turn=0.11,
+    gesture=0.022,
 )
 
 CALIB_FILE = "calibration.json"
@@ -122,7 +124,7 @@ def preflight(model_path):
         "from mediapipe.tasks.python import vision\n"
         "vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(\n"
         "    base_options=t.BaseOptions(model_asset_path=sys.argv[1]),\n"
-        "    running_mode=vision.RunningMode.VIDEO, num_faces=1,\n"
+        "    running_mode=vision.RunningMode.VIDEO, num_faces=8,\n"
         "    output_face_blendshapes=True)).close()\n"
     )
     proc = subprocess.run([sys.executable, "-c", code, model_path], capture_output=True, text=True)
@@ -145,13 +147,13 @@ def preflight(model_path):
 def build_detectors(model_paths):
     face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_landmarker.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_faces=1, output_face_blendshapes=True))
+        running_mode=vision.RunningMode.VIDEO, num_faces=8, output_face_blendshapes=True))
     hand = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["hand_landmarker.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_hands=2))
+        running_mode=vision.RunningMode.VIDEO, num_hands=8))
     pose = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["pose_landmarker_lite.task"]),
-        running_mode=vision.RunningMode.VIDEO, num_poses=1))
+        running_mode=vision.RunningMode.VIDEO, num_poses=8))
     return face, hand, pose
 
 
@@ -260,6 +262,7 @@ def run_calibration(cap, face_det, clock, args, W, H, window):
             frame = cv2.resize(frame, (W, H))
         if not args.no_flip:
             frame = cv2.flip(frame, 1)
+        frame = enhance_camera_frame(frame)
         mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         fr = face_det.detect_for_video(mp_img, clock.next())
         face = Face(fr.face_landmarks[0], fr.face_blendshapes[0] if fr.face_blendshapes else None, W, H) \
@@ -341,9 +344,38 @@ def to_bgra(img):
 
 
 def placeholder(label):
-    img = np.zeros((300, 300, 4), np.uint8)
-    cv2.circle(img, (150, 150), 140, (0, 0, 255, 220), -1)
-    cv2.putText(img, label, (12, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255, 255), 2)
+    """Create a lightweight original reaction sticker when no custom art exists."""
+    img = np.zeros((420, 420, 4), np.uint8)
+    palettes = {
+        "shocked": (30, 170, 255, 255), "laughing": (60, 220, 90, 255),
+        "crying": (230, 120, 70, 255), "confused": (210, 90, 210, 255),
+        "facepalm": (100, 180, 240, 255), "clapping": (70, 210, 230, 255),
+        "head_nod": (100, 220, 170, 255), "head_shake": (180, 120, 240, 255),
+        "shrug": (90, 190, 255, 255), "arms_up": (80, 220, 120, 255),
+        "angry": (70, 70, 240, 255), "wink": (210, 190, 60, 255),
+    }
+    color = palettes.get(label, (80, 180, 240, 255))
+    cv2.circle(img, (210, 190), 164, color, -1, cv2.LINE_AA)
+    cv2.circle(img, (210, 190), 164, (255, 255, 255, 255), 9, cv2.LINE_AA)
+    # Expression face artwork is intentionally original and generated locally.
+    eye_y = 145
+    if label == "wink":
+        cv2.ellipse(img, (150, eye_y), (28, 12), 0, 0, 180, (20, 20, 20, 255), 9)
+    else:
+        cv2.circle(img, (150, eye_y), 17, (20, 20, 20, 255), -1, cv2.LINE_AA)
+    cv2.circle(img, (265, eye_y), 17, (20, 20, 20, 255), -1, cv2.LINE_AA)
+    if label in ("shocked", "confused", "crying"):
+        cv2.ellipse(img, (210, 235), (35, 48 if label == "shocked" else 25), 0, 0, 360,
+                    (20, 20, 20, 255), -1, cv2.LINE_AA)
+    elif label in ("laughing", "clapping"):
+        cv2.ellipse(img, (210, 220), (58, 35), 0, 0, 180, (20, 20, 20, 255), 9, cv2.LINE_AA)
+    else:
+        cv2.ellipse(img, (210, 235), (42, 12), 0, 0, 180, (20, 20, 20, 255), 8, cv2.LINE_AA)
+    if label == "crying":
+        cv2.ellipse(img, (150, 190), (12, 30), 15, 0, 360, (255, 255, 255, 230), -1)
+        cv2.ellipse(img, (265, 190), (12, 30), 15, 0, 360, (255, 255, 255, 230), -1)
+    cv2.putText(img, label.replace("_", " ").upper(), (45, 365), cv2.FONT_HERSHEY_DUPLEX,
+                0.75, (255, 255, 255, 255), 2, cv2.LINE_AA)
     return Asset([img], [100])
 
 
@@ -431,6 +463,37 @@ def replace_face(frame, sprite, face, scale=1.24):
     return overlay(frame, rotated, x, y)
 
 
+def enhance_camera_frame(frame):
+    """Adaptive cleanup for dim, low-contrast or mildly soft webcam frames."""
+    if frame is None or frame.size == 0:
+        return frame
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    brightness = float(np.mean(gray))
+    contrast = float(np.std(gray))
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    result = frame
+
+    # Lift underexposed frames without aggressively washing out normal lighting.
+    if brightness < 92:
+        gamma = 1.0 + min(0.55, (92.0 - brightness) / 150.0)
+        lut = np.array([min(255, round(((i / 255.0) ** (1.0 / gamma)) * 255))
+                        for i in range(256)], dtype=np.uint8)
+        result = cv2.LUT(result, lut)
+
+    # Local contrast enhancement helps faces remain separable in haze or flat lighting.
+    if contrast < 48:
+        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
+        light, a, b = cv2.split(lab)
+        light = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8)).apply(light)
+        result = cv2.cvtColor(cv2.merge((light, a, b)), cv2.COLOR_LAB2BGR)
+
+    # Mild edge recovery for slightly soft lenses; skip very noisy/dark frames.
+    if sharpness < 85 and brightness > 35 and contrast > 10:
+        softened = cv2.GaussianBlur(result, (0, 0), 1.0)
+        result = cv2.addWeighted(result, 1.35, softened, -0.35, 0)
+    return result
+
+
 def dist(a, b):
     return float(np.hypot(a[0] - b[0], a[1] - b[1]))
 
@@ -480,6 +543,49 @@ class Body:
         shoulder_y = float(self.shoulders[:, 1].mean())
         self.elbows_up = self.seen and bool((self.elbows[:, 1] < shoulder_y).all())
 
+def assign_track_ids(faces, person_state, next_id):
+    """Match faces to prior-frame centers so reactions stay with people as they move."""
+    available = set(person_state)
+    ids = []
+    for face in faces:
+        match = None
+        if available:
+            candidate = min(available, key=lambda key: dist(face.center, person_state[key]["center"]))
+            if dist(face.center, person_state[candidate]["center"]) <= max(face.w * 1.8, 100):
+                match = candidate
+                available.remove(candidate)
+        if match is None:
+            match = next_id
+            next_id += 1
+        ids.append(match)
+    for stale_id in available:
+        del person_state[stale_id]
+    return ids, next_id
+
+
+def associate_people(faces, hands, bodies):
+    """Assign each detected hand/body to at most one nearest face."""
+    result = []
+    if not faces:
+        return result
+    hand_groups = [[] for _ in faces]
+    body_groups = [[] for _ in faces]
+    for hand in hands:
+        index = min(range(len(faces)), key=lambda i: dist(hand.palm, faces[i].center))
+        if dist(hand.palm, faces[index].center) < max(faces[index].w * 1.8, 75):
+            hand_groups[index].append(hand)
+    for body in bodies:
+        center = body.shoulders.mean(axis=0)
+        index = min(range(len(faces)), key=lambda i: dist(center, faces[i].center))
+        if dist(center, faces[index].center) < faces[index].h * 2.8:
+            body_groups[index].append(body)
+    for i in range(len(faces)):
+        nearest_body = min(body_groups[i], key=lambda item: dist(item.shoulders.mean(axis=0), faces[i].center)) \
+            if body_groups[i] else None
+        result.append((hand_groups[i], nearest_body))
+    return result
+
+
 
 def tongue_score(frame, face, hands, jaw_ready):
     """Fraction of the mouth opening that reads pink: saturated and lit, unlike teeth or throat."""
@@ -513,8 +619,11 @@ class Motion:
 
     def __init__(self):
         self.prev, self.energy, self.fw = [], 0.0, 200.0
+        self.prev_face = None
+        self.prev_body = None
+        self.nod = self.shake = self.shrug = self.clap = False
 
-    def update(self, hands, face):
+    def update(self, hands, face, body=None):
         if face is not None:
             self.fw = max(face.w, 1.0)
         cur = [h.palm for h in hands]
@@ -525,6 +634,22 @@ class Motion:
             if moved:
                 speed = max(moved) / self.fw
         self.energy = 0.8 * self.energy + 0.2 * speed
+        self.nod = self.shake = self.shrug = self.clap = False
+        if face is not None and self.prev_face is not None:
+            dx = (face.center[0] - self.prev_face[0]) / self.fw
+            dy = (face.center[1] - self.prev_face[1]) / self.fw
+            self.nod = abs(dy) > 0.035 and abs(dy) > abs(dx) * 1.2
+            self.shake = abs(dx) > 0.045 and abs(dx) > abs(dy) * 1.2
+        if face is not None:
+            self.prev_face = face.center
+        if body is not None and body.seen and face is not None:
+            shoulders_y = float(body.shoulders[:, 1].mean())
+            relative = (face.center[1] - shoulders_y) / self.fw
+            if self.prev_body is not None:
+                self.shrug = relative - self.prev_body > 0.035
+            self.prev_body = relative
+        if len(cur) >= 2:
+            self.clap = dist(cur[0], cur[1]) < 0.42 * self.fw
         self.prev = cur
         return self.energy
 
@@ -540,6 +665,11 @@ def measure(face, base):
         "squint": max(pair("eyeSquint"), pair("eyeBlink")),
         "z_squint": max(zpair("eyeSquint"), zpair("eyeBlink")),
         "turn": abs(face.turn_signed - base.neutral_turn),
+        "smile": pair("mouthSmile"),
+        "pucker": face.b("mouthPucker"),
+        "eyes_wide": pair("eyeWide"),
+        "brow_up": face.b("browInnerUp"),
+        "wink": abs(face.b("eyeBlinkLeft") - face.b("eyeBlinkRight")),
     }
     cap = lambda v: min(v, Z_CAP)
     m["z_disgust"] = 2 * cap(m["z_sneer"]) + cap(m["z_brow"]) + cap(m["z_frown"]) + cap(m["z_lip"])
@@ -562,6 +692,10 @@ def decide(face, hands, body, tongue, gesture, m):
     near = lambda a, b, k: dist(a, b) < k * fw
     elbows_up = bool(body and body.elbows_up)
     d.update(m, gesture=gesture, tongue=tongue, elbows_up=elbows_up)
+    # Shock is the direct first-frame match; reserve crashing_out for the
+    # stronger two-hands-on-head gesture below.
+    if m.get("eyes_wide", 0.0) > 0.30 and m.get("jaw", 0.0) > 0.18:
+        return "shocked", d
     screaming = over("scream_jaw", m, "z_jaw", "jaw")
 
     if len(hands) >= 2:
@@ -592,6 +726,23 @@ def decide(face, hands, body, tongue, gesture, m):
         if h.open and h.palm[1] < face.nose[1] and abs(h.palm[0] - face.nose[0]) > 0.8 * fw:
             return "hand_up", d
 
+    # Additional direct expression cues work without personal calibration.
+    if m.get("eyes_wide", 0.0) > 0.30 and m.get("jaw", 0.0) > 0.18:
+        return "shocked", d
+    if m.get("mouthSmile", m.get("smile", 0.0)) > 0.68:
+        return "laughing", d
+    if m.get("brow_up", 0.0) > 0.48 and m.get("z_frown", 0.0) > 1.0:
+        return "crying", d
+    if m.get("brow_up", 0.0) > 0.42 and m.get("eyes_wide", 0.0) > 0.22:
+        return "confused", d
+    if m.get("wink", 0.0) > 0.38:
+        return "wink", d
+    if m.get("pucker", 0.0) > 0.38:
+        return "flirty", d
+    if m.get("smile", 0.0) > 0.52:
+        return "dance", d
+    if m.get("z_brow", 0.0) > 3.2 and m.get("jaw", 0.0) < 0.18:
+        return "angry", d
     if tongue > T["tongue"]:
         return "tongue_out", d
     if over("jaw_open", m, "z_jaw", "jaw"):
@@ -680,7 +831,7 @@ def main():
     if args.calibrate:
         face_det = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
             base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_landmarker.task"]),
-            running_mode=vision.RunningMode.VIDEO, num_faces=1, output_face_blendshapes=True))
+            running_mode=vision.RunningMode.VIDEO, num_faces=8, output_face_blendshapes=True))
         try:
             new = run_calibration(cap, face_det, clock, args, W, H, window)
         finally:
@@ -708,10 +859,9 @@ def main():
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
     face_det, hand_det, pose_det = build_detectors(model_paths)
-    motion = Motion()
-    shown, hold, show_hud = None, 0, True
-    arm = {p: 0 for p in POSES}
-    shown_since = 0.0
+    person_state = {}
+    next_person_id = 0
+    show_hud = True
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
     print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test a pose")
@@ -726,63 +876,106 @@ def main():
                 frame = cv2.resize(frame, (W, H))
             if not args.no_flip:
                 frame = cv2.flip(frame, 1)
+            frame = enhance_camera_frame(frame)
 
             ts = clock.next()
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             fr = face_det.detect_for_video(mp_img, ts)
             hr = hand_det.detect_for_video(mp_img, ts)
             pr = pose_det.detect_for_video(mp_img, ts)
-            face = Face(fr.face_landmarks[0], fr.face_blendshapes[0] if fr.face_blendshapes else None, W, H) \
-                if fr.face_landmarks else None
-            hands = [Hand(h, W, H) for h in hr.hand_landmarks]
-            body = Body(pr.pose_landmarks[0], W, H) if pr.pose_landmarks else None
-
-            m = measure(face, base) if face is not None else {}
-            tongue = tongue_score(frame, face, hands,
-                                  over("tongue_jaw", m, "z_jaw", "jaw")) if face is not None else 0.0
-            gesture = motion.update(hands, face)
-            raw, dbg = decide(face, hands, body, tongue, gesture, m)
-
-            fired = None
-            for p in POSES:
-                arm[p] = arm[p] + 1 if raw == p else 0
-                if raw == p and arm[p] >= ARM.get(p, 3):
-                    fired = p
+            faces = [
+                Face(landmarks, fr.face_blendshapes[i] if i < len(fr.face_blendshapes) else None, W, H)
+                for i, landmarks in enumerate(fr.face_landmarks)
+            ]
+            # Stable left-to-right ordering keeps each person's state independent in a frame.
+            faces.sort(key=lambda item: item.center[0])
+            all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
+            all_bodies = [Body(p, W, H) for p in pr.pose_landmarks]
             now = time.monotonic()
-            if forced and now < forced_until:
-                fired = forced
-            if fired:
-                if fired != shown:
-                    shown_since = now
-                shown, hold = fired, HOLD_FRAMES
-            elif hold > 0:
-                hold -= 1
+            face_ids, next_person_id = assign_track_ids(faces, person_state, next_person_id)
+            people = associate_people(faces, all_hands, all_bodies)
+            shown_items = []
+            for person_id, face, (hands, body) in zip(face_ids, faces, people):
+                # The association list is frame-ordered; persistent track IDs are
+                # dictionary keys and must never be used as list indexes.
+
+                state = person_state.setdefault(person_id, {
+                    "motion": Motion(), "shown": None, "hold": 0,
+                    "arm": {pose: 0 for pose in POSES}, "shown_since": now,
+                    "center": face.center,
+                })
+                state["center"] = face.center
+                m = measure(face, base)
+                tongue = tongue_score(frame, face, hands, over("tongue_jaw", m, "z_jaw", "jaw"))
+                gesture = state["motion"].update(hands, face, body)
+                motion = state["motion"]
+                if motion.clap:
+                    raw = "clapping"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                elif motion.nod:
+                    raw = "head_nod"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                elif motion.shake:
+                    raw = "head_shake"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                elif motion.shrug:
+                    raw = "shrug"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                elif body and body.seen and body.elbows_up:
+                    raw = "arms_up"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                elif any(h.palm[1] < face.top[1] + 0.25 * face.h for h in hands):
+                    raw = "facepalm"
+                    dbg = {"hands": len(hands), **m, "gesture": gesture}
+                else:
+                    raw, dbg = decide(face, hands, body, tongue, gesture, m)
+
+                fired = None
+                for pose in POSES:
+                    state["arm"][pose] = state["arm"][pose] + 1 if raw == pose else 0
+                    if raw == pose and state["arm"][pose] >= ARM.get(pose, 2):
+                        fired = pose
+                if forced and now < forced_until:
+                    fired = forced
+                if fired:
+                    if fired != state["shown"]:
+                        state["shown_since"] = now
+                    state["shown"], state["hold"] = fired, HOLD_FRAMES
+                elif state["hold"] > 0:
+                    state["hold"] -= 1
+                else:
+                    state["shown"] = None
+
+                if state["shown"]:
+                    asset = assets[state["shown"]]
+                    idx = asset.frame_at(int((now - state["shown_since"]) * 1000))
+                    sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
+                    replace_face(frame, sprite, face, scale=1.24)
+                shown_items.append((state["shown"], raw, dbg, face, hands, body))
+
+            # Faces disappearing from view should not leave stale state behind.
+            if show_hud:
+                preview = frame.copy()
+                for shown, raw, dbg, face, hands, body in shown_items:
+                    draw_hud(preview, shown, raw, dbg, face, hands, body, base)
             else:
-                shown = None
+                preview = frame
 
-            if face is not None:
-                sm_center = 0.7 * sm_center + 0.3 * np.array(face.center, np.float32)
-                sm_h = 0.7 * sm_h + 0.3 * face.h * FACE_SCALE
-
-            if shown and face is not None:
-                asset = assets[shown]
-                idx = asset.frame_at(int((now - shown_since) * 1000))
-                # Size the selected reaction from the current face geometry every frame;
-                # this keeps the full-face replacement attached during head movement.
-                sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
-                replace_face(frame, sprite, face, scale=1.24)
-
+            # OBS receives only the clean processed camera frame. Diagnostic
+            # landmarks/dots are drawn on a separate preview copy, never output.
             if vcam:
                 vcam.send(frame)
                 vcam.sleep_until_next_frame()
 
-            preview = frame
-            if show_hud:
-                preview = frame.copy()
-                draw_hud(preview, shown, raw, dbg, face, hands, body, base)
             cv2.imshow(window, preview)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
+                break
+            # Closing the OpenCV preview with its title-bar X exits the engine too.
+            try:
+                if cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
+                    break
+            except cv2.error:
                 break
             if key == ord("d"):
                 show_hud = not show_hud
@@ -792,8 +985,7 @@ def main():
                     base = new
                     base.save(calib_path)
                     print(f"Saved {CALIB_FILE}.")
-                motion, shown, hold = Motion(), None, 0
-                arm = {p: 0 for p in POSES}
+                person_state.clear()
             elif 0 < key < 256 and chr(key) in TEST_KEYS:
                 forced, forced_until = POSES[TEST_KEYS.index(chr(key))], now + 2.0
     finally:
