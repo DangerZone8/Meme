@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, enhance_camera_frame, load_asset, replace_face)
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, enhance_camera_frame, load_asset, match_face_confidences, replace_face)
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -15,6 +15,27 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertGreater(int(np.count_nonzero(frame)), 0)
         # The face rectangle is drawn in the overlay colour at its top edge.
         self.assertTrue(np.any(np.all(frame[50, 80:151] == (60, 220, 80), axis=1)))
+
+    def test_live_debug_overlay_shows_real_detector_confidence_per_face(self):
+        face = SimpleNamespace(box=(100, 80, 180, 170))
+        detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=92, origin_y=70, width=100, height=110),
+            categories=[SimpleNamespace(score=0.873)],
+        )
+        count = match_face_confidences([face], [detection], 320, 240)
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(face.detection_confidence, 0.873, places=3)
+
+        # A second person receives their own score, not the first person's value.
+        second = SimpleNamespace(box=(220, 80, 290, 165))
+        second_detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=214, origin_y=74, width=88, height=100),
+            categories=[SimpleNamespace(score=0.421)],
+        )
+        count = match_face_confidences([face, second], [detection, second_detection], 320, 240)
+        self.assertEqual(count, 2)
+        self.assertAlmostEqual(face.detection_confidence, 0.873, places=3)
+        self.assertAlmostEqual(second.detection_confidence, 0.421, places=3)
 
     def test_transparent_meme_pixels_never_reveal_camera_frame(self):
         original = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
