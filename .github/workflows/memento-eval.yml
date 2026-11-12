@@ -1,0 +1,25 @@
+name: Optional Memento-54K evaluation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "feature/**"]
+    paths: ["tools/memento_eval.py", "tools/test_memento_eval.py", "requirements-memento-eval.txt", ".github/workflows/memento-eval.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["tools/memento_eval.py", "tools/test_memento_eval.py", "requirements-memento-eval.txt", ".github/workflows/memento-eval.yml"]
+permissions:
+  contents: read
+jobs:
+  annotation-eval-contract:
+    name: Memento annotation/evaluation tests (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Test evaluator without downloading dataset or videos
+        run: python -m unittest tools.test_memento_eval -v
+      - name: Check Python syntax
+        run: python -m py_compile tools/memento_eval.py tools/test_memento_eval.py
