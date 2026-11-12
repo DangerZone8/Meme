@@ -39,6 +39,10 @@ class RepositoryContractTests(unittest.TestCase):
             {"from": "resources/ItsGiving.exe", "to": "ItsGiving.exe"},
             build["extraResources"],
         )
+        self.assertIn(
+            {"from": "../scripts/setup_virtual_camera.ps1", "to": "VirtualCameraSetup.ps1"},
+            build["extraResources"],
+        )
         self.assertIn("dist:win", self.package["scripts"])
         self.assertIn("assets/**", build["files"])
 
@@ -47,13 +51,13 @@ class RepositoryContractTests(unittest.TestCase):
             'start: options => ipcRenderer.invoke("engine:start", options)',
             'stop: () => ipcRenderer.invoke("engine:stop")',
             'status: () => ipcRenderer.invoke("engine:status")',
-            'obsHelp: () => ipcRenderer.invoke("app:obs-help")',
+            'setupVirtualCamera: () => ipcRenderer.invoke("app:virtual-camera-setup")',
         }
         for declaration in exposed_methods:
             self.assertIn(declaration, self.preload)
-        for channel in ("engine:start", "engine:stop", "engine:status", "app:obs-help"):
+        for channel in ("engine:start", "engine:stop", "engine:status", "app:virtual-camera-setup"):
             self.assertIn(f'ipcMain.handle("{channel}"', self.main)
-        for method in ("start", "stop", "status", "obsHelp", "onState", "onLog"):
+        for method in ("start", "stop", "status", "setupVirtualCamera", "onState", "onLog"):
             self.assertIn(f"window.itsGiving.{method}", self.renderer)
         self.assertIn('ipcRenderer.on("app:state"', self.preload)
         self.assertIn('ipcRenderer.on("app:log"', self.preload)
@@ -88,8 +92,16 @@ class RepositoryContractTests(unittest.TestCase):
 
     def test_obs_instructions_match_direct_backend_usage(self):
         text = (self.html + self.main + self.help).lower()
-        self.assertIn("close obs before starting", text)
+        self.assertIn("set up virtual camera", text)
+        self.assertIn("administrator approval", text)
+        self.assertIn("zoom", text)
+        self.assertIn("google meet", text)
+        self.assertIn("microsoft teams", text)
         self.assertIn("obs virtual camera", text)
+        setup = read("scripts/setup_virtual_camera.ps1")
+        self.assertIn("Start-Process -FilePath \"powershell.exe\" -Verb RunAs", setup)
+        self.assertIn("winget.Source install --id OBSProject.OBSStudio", setup)
+        self.assertIn("virtualcam-install.bat", setup)
         self.assertNotIn("open obs and start its virtual camera", text)
         self.assertNotIn("start obs virtual camera; choose", text)
 
