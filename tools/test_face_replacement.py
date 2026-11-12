@@ -119,7 +119,7 @@ class FaceReplacementTests(unittest.TestCase):
         motion = Motion()
         face_a = SimpleNamespace(w=100.0, center=(100.0, 100.0))
         face_jitter = SimpleNamespace(w=100.0, center=(101.0, 102.0))
-        face_b = SimpleNamespace(w=100.0, center=(100.0, 106.0))
+        face_b = SimpleNamespace(w=100.0, center=(100.0, 108.0))
         motion.update([], face_a)
         motion.update([], face_jitter)
         self.assertFalse(motion.nod)
