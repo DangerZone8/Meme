@@ -3,10 +3,50 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, enhance_camera_frame, load_asset, replace_face)
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, draw_untracked_detections, enhance_camera_frame, load_asset, match_face_confidences, replace_face)
 
 
 class FaceReplacementTests(unittest.TestCase):
+    def test_live_debug_overlay_draws_face_box_and_tracking_status(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        face = SimpleNamespace(box=(80, 50, 150, 140))
+        draw_hud(frame, "shocked", "shocked", {}, face, [], None,
+                 SimpleNamespace(generic=False), 7, 2)
+        self.assertGreater(int(np.count_nonzero(frame)), 0)
+        # The face rectangle is drawn in the overlay colour at its top edge.
+        self.assertTrue(np.any(np.all(frame[50, 80:151] == (60, 220, 80), axis=1)))
+
+    def test_live_debug_overlay_shows_real_detector_confidence_per_face(self):
+        face = SimpleNamespace(box=(100, 80, 180, 170))
+        detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=92, origin_y=70, width=100, height=110),
+            categories=[SimpleNamespace(score=0.873)],
+        )
+        count = match_face_confidences([face], [detection], 320, 240)
+        self.assertEqual(count, 1)
+        self.assertAlmostEqual(face.detection_confidence, 0.873, places=3)
+
+        # A second person receives their own score, not the first person's value.
+        second = SimpleNamespace(box=(220, 80, 290, 165))
+        second_detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=214, origin_y=74, width=88, height=100),
+            categories=[SimpleNamespace(score=0.421)],
+        )
+        count = match_face_confidences([face, second], [detection, second_detection], 320, 240)
+        self.assertEqual(count, 2)
+        self.assertAlmostEqual(face.detection_confidence, 0.873, places=3)
+        self.assertAlmostEqual(second.detection_confidence, 0.421, places=3)
+
+    def test_detector_only_face_is_marked_when_landmarks_are_missing(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=30, origin_y=40, width=80, height=90),
+            categories=[SimpleNamespace(score=0.612)],
+        )
+        draw_untracked_detections(frame, [detection], [])
+        self.assertGreater(int(np.count_nonzero(frame)), 0)
+        self.assertTrue(np.any(np.all(frame[40, 30:111] == (0, 120, 255), axis=1)))
+
     def test_transparent_meme_pixels_never_reveal_camera_frame(self):
         original = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
         frame = original.copy()
@@ -75,17 +115,27 @@ class FaceReplacementTests(unittest.TestCase):
         }
         self.assertEqual(decide(face, [], None, 0.0, 0.0, measurements)[0], 'shocked')
 
-    def test_head_movement_and_clap_are_detected(self):
+    def test_head_movement_and_clap_are_detected_without_stationary_false_positives(self):
         motion = Motion()
         face_a = SimpleNamespace(w=100.0, center=(100.0, 100.0))
-        face_b = SimpleNamespace(w=100.0, center=(100.0, 106.0))
+        face_jitter = SimpleNamespace(w=100.0, center=(101.0, 102.0))
+        face_b = SimpleNamespace(w=100.0, center=(100.0, 108.0))
         motion.update([], face_a)
+        motion.update([], face_jitter)
+        self.assertFalse(motion.nod)
         motion.update([], face_b)
         self.assertTrue(motion.nod)
-        hands = [SimpleNamespace(palm=np.array((90.0, 120.0))),
-                 SimpleNamespace(palm=np.array((120.0, 120.0)))]
-        motion.update(hands, face_b)
+
+        apart = [SimpleNamespace(palm=np.array((70.0, 120.0))),
+                 SimpleNamespace(palm=np.array((140.0, 120.0)))]
+        together = [SimpleNamespace(palm=np.array((90.0, 120.0))),
+                    SimpleNamespace(palm=np.array((120.0, 120.0)))]
+        motion.update(apart, face_b)
+        self.assertFalse(motion.clap)
+        motion.update(together, face_b)
         self.assertTrue(motion.clap)
+        motion.update(together, face_b)
+        self.assertFalse(motion.clap)
     def test_decide_accepts_older_measurement_payloads(self):
         face = SimpleNamespace(
             w=80.0, center=(100.0, 100.0), nose=(100.0, 90.0),
