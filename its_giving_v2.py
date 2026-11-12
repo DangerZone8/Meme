@@ -788,6 +788,30 @@ def match_face_confidences(faces, detections, width, height):
     return sum(1 for _, score in boxes if score is not None)
 
 
+def draw_untracked_detections(img, detections, faces):
+    """Show detector-only boxes when the landmark stage failed to produce a face."""
+    tracked_boxes = [face.box for face in faces]
+    for detection in detections:
+        box = detection.bounding_box
+        x0, y0 = int(box.origin_x), int(box.origin_y)
+        x1, y1 = x0 + int(box.width), y0 + int(box.height)
+        overlaps = False
+        for fx0, fy0, fx1, fy1 in tracked_boxes:
+            ix0, iy0 = max(x0, fx0), max(y0, fy0)
+            ix1, iy1 = min(x1, fx1), min(y1, fy1)
+            intersection = max(0, ix1 - ix0) * max(0, iy1 - iy0)
+            area = max(1, (x1 - x0) * (y1 - y0))
+            if intersection / area >= 0.03:
+                overlaps = True
+                break
+        if not overlaps:
+            score = float(detection.categories[0].score) if detection.categories else 0.0
+            cv2.rectangle(img, (x0, y0), (x1, y1), (0, 120, 255), 2)
+            cv2.putText(img, f"DETECTOR ONLY {score * 100:.0f}% | landmarks missed",
+                        (max(4, x0), max(18, y0 - 7)), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45, (0, 120, 255), 1, cv2.LINE_AA)
+
+
 def draw_hud(img, shown, raw, d, face, hands, body, base, person_id, face_count,
              detector_count=0):
     """Draw per-person tracking diagnostics on the local preview only."""
@@ -996,6 +1020,7 @@ def main():
             if show_hud:
                 preview = frame.copy()
                 face_count = len(shown_items)
+                draw_untracked_detections(preview, score_result.detections, faces)
                 for person_id, shown, raw, dbg, face, hands, body in shown_items:
                     draw_hud(preview, shown, raw, dbg, face, hands, body, base,
                              person_id, face_count, detector_count)
