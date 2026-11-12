@@ -205,5 +205,84 @@ class FaceReplacementTests(unittest.TestCase):
         )))
 
 
+
+    def test_generic_hand_motion_does_not_select_talking_to_wall(self):
+        face = SimpleNamespace(
+            w=100.0, center=(150.0, 120.0), nose=(150.0, 105.0),
+            mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0),
+            chin=np.array((150.0, 180.0)),
+        )
+        measurements = {
+            "jaw": 0.0, "z_jaw": 0.0, "sneer": 0.0, "z_sneer": 0.0,
+            "z_disgust": 0.0, "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+            "smile": 0.0, "pucker": 0.0, "eyes_wide": 0.0, "brow_up": 0.0,
+        }
+        moving_hand = SimpleNamespace(
+            palm=np.array((190.0, 135.0)), index=np.array((190.0, 90.0)),
+            thumb=np.array((185.0, 135.0)), open=True, pointing=False,
+        )
+        pose, _ = decide(face, [moving_hand], None, 0.0, 0.9, measurements)
+        self.assertNotEqual(pose, "talking_to_wall")
+
+    def test_sideways_index_point_can_select_talking_to_wall(self):
+        face = SimpleNamespace(
+            w=100.0, center=(150.0, 120.0), nose=np.array((150.0, 105.0)),
+            mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0),
+            chin=np.array((150.0, 180.0)),
+        )
+        measurements = {
+            "jaw": 0.0, "z_jaw": 0.0, "sneer": 0.0, "z_sneer": 0.0,
+            "z_disgust": 0.0, "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+            "smile": 0.0, "pucker": 0.0, "eyes_wide": 0.0, "brow_up": 0.0,
+        }
+        pointing_hand = SimpleNamespace(
+            palm=np.array((205.0, 130.0)), index=np.array((270.0, 125.0)),
+            thumb=np.array((205.0, 130.0)), open=False, pointing=True,
+        )
+        pose, _ = decide(face, [pointing_hand], None, 0.0, 0.0, measurements)
+        self.assertEqual(pose, "talking_to_wall")
+
+    def test_raised_hand_above_forehead_is_not_facepalm(self):
+        face = SimpleNamespace(
+            w=100.0, center=(150.0, 120.0), nose=(150.0, 105.0),
+            mouth=(150.0, 145.0), eye_y=90.0, top=(150.0, 60.0),
+            chin=np.array((150.0, 180.0)),
+        )
+        measurements = {
+            "jaw": 0.0, "z_jaw": 0.0, "sneer": 0.0, "z_sneer": 0.0,
+            "z_disgust": 0.0, "z_brow": 0.0, "z_frown": 0.0, "z_lip": 0.0,
+            "squint": 0.0, "z_squint": 0.0, "turn": 0.0,
+            "smile": 0.0, "pucker": 0.0, "eyes_wide": 0.0, "brow_up": 0.0,
+        }
+        raised_hand = SimpleNamespace(
+            palm=np.array((240.0, 20.0)), index=np.array((250.0, 0.0)),
+            thumb=np.array((230.0, 25.0)), open=True, pointing=False,
+        )
+        pose, _ = decide(face, [raised_hand], None, 0.0, 0.0, measurements)
+        self.assertNotEqual(pose, "facepalm")
+
+    def test_shrug_only_triggers_when_shoulders_rise(self):
+        motion = Motion()
+        face = SimpleNamespace(w=100.0, center=(100.0, 100.0))
+        body_low = SimpleNamespace(
+            seen=True, shoulders=np.array(((70.0, 160.0), (130.0, 160.0))),
+            elbows=np.array(((65.0, 170.0), (135.0, 170.0))),
+        )
+        body_lower = SimpleNamespace(
+            seen=True, shoulders=np.array(((70.0, 170.0), (130.0, 170.0))),
+            elbows=np.array(((65.0, 180.0), (135.0, 180.0))),
+        )
+        body_raised = SimpleNamespace(
+            seen=True, shoulders=np.array(((70.0, 150.0), (130.0, 150.0))),
+            elbows=np.array(((65.0, 160.0), (135.0, 160.0))),
+        )
+        motion.update([], face, body_low)
+        motion.update([], face, body_lower)
+        self.assertFalse(motion.shrug)
+        motion.update([], face, body_raised)
+        self.assertTrue(motion.shrug)
+
 if __name__ == "__main__":
     unittest.main()
