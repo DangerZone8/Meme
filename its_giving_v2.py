@@ -36,7 +36,13 @@ FACE_SCALE = 2.0
 HOLD_FRAMES = 8
 # Trigger on the first confident frame. Assets are preloaded at startup, so
 # reaction changes never wait for disk access.
-ARM = {pose: 1 for pose in POSES}
+# Expression matches can react on the first frame. Spatial hand/body gestures
+# need two consecutive frames (about 33–67 ms at normal webcam rates) to avoid
+# accidental triggers from landmark jitter.
+ARM = {pose: 2 for pose in POSES}
+for pose in ("shocked", "laughing", "crying", "confused", "wink", "tongue_out",
+             "open_mouth", "disgusted", "angry", "suspicious"):
+    ARM[pose] = 1
 ARM["spin"] = 3
 
 Z = dict(
@@ -621,12 +627,13 @@ def tongue_score(frame, face, hands, jaw_ready):
 
 
 class Motion:
-    """Smoothed hand speed across frames, in face-widths per frame."""
+    """Noise-resistant, face-normalized motion cues with one-frame gesture events."""
 
     def __init__(self):
         self.prev, self.energy, self.fw = [], 0.0, 200.0
         self.prev_face = None
         self.prev_body = None
+        self.prev_clap_distance = None
         self.nod = self.shake = self.shrug = self.clap = False
 
     def update(self, hands, face, body=None):
@@ -635,27 +642,44 @@ class Motion:
         cur = [h.palm for h in hands]
         speed = 0.0
         if cur and self.prev:
-            moved = [min(dist(c, p) for p in self.prev) for c in cur]
-            moved = [m for m in moved if m < self.fw]
+            # Match hands one-to-one; independent nearest-neighbour matching can
+            # count one old hand twice and exaggerate motion.
+            if len(cur) >= 2 and len(self.prev) >= 2:
+                direct = dist(cur[0], self.prev[0]) + dist(cur[1], self.prev[1])
+                crossed = dist(cur[0], self.prev[1]) + dist(cur[1], self.prev[0])
+                moved = [dist(cur[i], self.prev[i if direct <= crossed else 1 - i])
+                         for i in range(2)]
+            else:
+                moved = [min(dist(c, p) for p in self.prev) for c in cur]
+            moved = [value for value in moved if value < self.fw]
             if moved:
                 speed = max(moved) / self.fw
-        self.energy = 0.8 * self.energy + 0.2 * speed
+        self.energy = 0.72 * self.energy + 0.28 * speed
         self.nod = self.shake = self.shrug = self.clap = False
         if face is not None and self.prev_face is not None:
             dx = (face.center[0] - self.prev_face[0]) / self.fw
             dy = (face.center[1] - self.prev_face[1]) / self.fw
-            self.nod = abs(dy) > 0.035 and abs(dy) > abs(dx) * 1.2
-            self.shake = abs(dx) > 0.045 and abs(dx) > abs(dy) * 1.2
+            # Raise the dead-zone to avoid camera/landmark jitter being read as
+            # deliberate head movement. Dominant-axis check rejects diagonals.
+            self.nod = abs(dy) > 0.055 and abs(dy) > abs(dx) * 1.35
+            self.shake = abs(dx) > 0.060 and abs(dx) > abs(dy) * 1.35
         if face is not None:
             self.prev_face = face.center
         if body is not None and body.seen and face is not None:
             shoulders_y = float(body.shoulders[:, 1].mean())
             relative = (face.center[1] - shoulders_y) / self.fw
             if self.prev_body is not None:
-                self.shrug = relative - self.prev_body > 0.035
+                self.shrug = abs(relative - self.prev_body) > 0.045
             self.prev_body = relative
         if len(cur) >= 2:
-            self.clap = dist(cur[0], cur[1]) < 0.42 * self.fw
+            current_distance = dist(cur[0], cur[1])
+            # A clap is a closing movement, not simply two hands resting close.
+            self.clap = (current_distance < 0.38 * self.fw
+                         and self.prev_clap_distance is not None
+                         and self.prev_clap_distance - current_distance > 0.025 * self.fw)
+            self.prev_clap_distance = current_distance
+        else:
+            self.prev_clap_distance = None
         self.prev = cur
         return self.energy
 
@@ -721,8 +745,10 @@ def decide(face, hands, body, tongue, gesture, m):
             return "crashing_out", d
 
     near_head = lambda h: abs(h.palm[0] - face.nose[0]) < 1.3 * fw and h.palm[1] < face.eye_y + 0.3 * face.h
-    if elbows_up and all(near_head(h) for h in hands):
+    if hands and elbows_up and all(near_head(h) for h in hands):
         return ("crashing_out" if screaming else "dance"), d
+    if elbows_up:
+        return "arms_up", d
 
     for h in hands:
         if near(h.thumb, face.nose, 0.35) and near(h.index, face.nose, 0.35) and near(h.thumb, h.index, 0.3):
@@ -983,9 +1009,6 @@ def main():
                     dbg = {"hands": len(hands), **m, "gesture": gesture}
                 elif motion.shrug:
                     raw = "shrug"
-                    dbg = {"hands": len(hands), **m, "gesture": gesture}
-                elif body and body.seen and body.elbows_up:
-                    raw = "arms_up"
                     dbg = {"hands": len(hands), **m, "gesture": gesture}
                 elif any(h.palm[1] < face.top[1] + 0.25 * face.h for h in hands):
                     raw = "facepalm"
