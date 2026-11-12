@@ -12,7 +12,14 @@ $("start").addEventListener("click", async () => {
   log(result.message); if (!result.ok) log("Check the executable and camera permissions.");
 });
 $("stop").addEventListener("click", async () => { const result=await window.itsGiving.stop(); log(result.message); });
-$("obs").addEventListener("click", () => window.itsGiving.obsHelp());
+$("obs").addEventListener("click", async () => {
+  $("obs").disabled = true; $("obs").textContent = "Setting up…";
+  log("Setting up the virtual-camera driver. Windows may ask for administrator approval.");
+  const result = await window.itsGiving.setupVirtualCamera();
+  log(result.message);
+  $("obs").textContent = result.ok ? "Setup complete" : "Retry setup";
+  $("obs").disabled = false;
+});
 window.itsGiving.onState(value => state(value.running));
 window.itsGiving.onLog(log);
 window.itsGiving.status().then(value => { state(value.running); value.logs.forEach(log); });
