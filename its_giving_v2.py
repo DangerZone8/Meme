@@ -756,34 +756,36 @@ def decide(face, hands, body, tongue, gesture, m):
     return None, d
 
 
-def draw_hud(img, shown, raw, d, face, hands, body, base):
+def draw_hud(img, shown, raw, d, face, hands, body, base, person_id, face_count):
+    """Draw per-person tracking diagnostics on the local preview only."""
     if face:
         x0, y0, x1, y1 = face.box
-        cv2.rectangle(img, (x0, y0), (x1, y1), (0, 255, 0), 1)
+        colour = (60, 220, 80) if shown else (0, 190, 255)
+        cv2.rectangle(img, (x0, y0), (x1, y1), colour, 2)
+        selected = shown or "waiting"
+        candidate = raw or "none"
+        label = f"ID {person_id} | meme: {selected} | raw: {candidate}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale, thickness = 0.48, 1
+        (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
+        label_y = max(th + 8, y0 - 8)
+        cv2.rectangle(img, (max(0, x0), label_y - th - 6),
+                      (min(img.shape[1] - 1, x0 + tw + 10), label_y + baseline),
+                      (24, 24, 24), -1)
+        cv2.putText(img, label, (max(4, x0 + 5), label_y),
+                    font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
     for h in hands:
-        cv2.circle(img, (int(h.palm[0]), int(h.palm[1])), 6, (0, 200, 255), -1)
+        cv2.circle(img, (int(h.palm[0]), int(h.palm[1])), 5, (0, 200, 255), -1)
     if body and body.seen:
         for pt in np.vstack([body.shoulders, body.elbows]):
-            cv2.circle(img, (int(pt[0]), int(pt[1])), 6, (255, 120, 0), -1)
-    g = d.get
-    lines = [
-        (f"showing: {shown or '-'}   raw: {raw or '-'}   hands: {g('hands', 0)}"
-         f"   elbows up: {'Y' if g('elbows_up') else 'n'}", (0, 255, 0)),
-        (f"jaw {g('jaw', 0):.2f} = {g('z_jaw', 0):+.1f}s/{Z['jaw_open']:.0f}   "
-         f"squint {g('squint', 0):.2f} = {g('z_squint', 0):+.1f}s/{Z['squint']:.0f}   "
-         f"tongue {g('tongue', 0):.2f}   turn {g('turn', 0):.2f}   gesture {g('gesture', 0):.3f}", (0, 255, 0)),
-        (f"disgust {g('z_disgust', 0):+.1f}s/{Z['disgust']:.0f} = 2x sneer {g('z_sneer', 0):+.1f} "
-         f"+ brow {g('z_brow', 0):+.1f} + frown {g('z_frown', 0):+.1f} + lip {g('z_lip', 0):+.1f}", (0, 255, 0)),
-        (("NOT CALIBRATED - generic baseline, everything is harder to trigger. press 'c'"
-          if base.generic else
-          f"calibrated {base.made} on {base.samples} frames   (s = sigma above your neutral)"),
-         (0, 140, 255) if base.generic else (200, 200, 200)),
-        ("keys: q quit  d hud  c recalibrate  1-9 0 - = [ ] test poses", (0, 255, 0)),
-    ]
-    for i, (t, colour) in enumerate(lines):
-        y = 24 + 22 * i
-        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
-        cv2.putText(img, t, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, colour, 1)
+            cv2.circle(img, (int(pt[0]), int(pt[1])), 5, (255, 120, 0), -1)
+    panel = f"SCREENFILTER DEBUG  faces: {face_count}/8  |  tracks: {face_count}  |  D: hide overlay"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    (tw, th), baseline = cv2.getTextSize(panel, font, 0.58, 2)
+    cv2.rectangle(img, (6, 6), (min(img.shape[1] - 1, tw + 18), th + baseline + 16), (18, 18, 18), -1)
+    cv2.putText(img, panel, (12, th + 10), font, 0.58, (255, 255, 255), 2, cv2.LINE_AA)
+    if base.generic:
+        cv2.putText(img, "Calibration: generic baseline", (12, th + 34), font, 0.45, (0, 165, 255), 1, cv2.LINE_AA)
 
 
 def main():
@@ -951,13 +953,18 @@ def main():
                     idx = asset.frame_at(int((now - state["shown_since"]) * 1000))
                     sprite = asset.scaled(idx, max(8, int(face.h * 1.30)))
                     replace_face(frame, sprite, face, scale=1.24)
-                shown_items.append((state["shown"], raw, dbg, face, hands, body))
+                shown_items.append((person_id, state["shown"], raw, dbg, face, hands, body))
 
             # Faces disappearing from view should not leave stale state behind.
             if show_hud:
                 preview = frame.copy()
-                for shown, raw, dbg, face, hands, body in shown_items:
-                    draw_hud(preview, shown, raw, dbg, face, hands, body, base)
+                face_count = len(shown_items)
+                for person_id, shown, raw, dbg, face, hands, body in shown_items:
+                    draw_hud(preview, shown, raw, dbg, face, hands, body, base,
+                             person_id, face_count)
+                if not shown_items:
+                    cv2.putText(preview, "SCREENFILTER DEBUG  faces: 0/8  |  no face landmarks detected",
+                                (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 0, 255), 2, cv2.LINE_AA)
             else:
                 preview = frame
 
