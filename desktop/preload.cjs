@@ -3,7 +3,7 @@ contextBridge.exposeInMainWorld("itsGiving", {
   start: options => ipcRenderer.invoke("engine:start", options),
   stop: () => ipcRenderer.invoke("engine:stop"),
   status: () => ipcRenderer.invoke("engine:status"),
-  obsHelp: () => ipcRenderer.invoke("app:obs-help"),
+  setupVirtualCamera: () => ipcRenderer.invoke("app:virtual-camera-setup"),
   onState: callback => ipcRenderer.on("app:state", (_event, value) => callback(value)),
   onLog: callback => ipcRenderer.on("app:log", (_event, value) => callback(value))
 });

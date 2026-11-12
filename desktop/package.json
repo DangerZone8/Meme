@@ -27,6 +27,10 @@
       {
         "from": "resources/ItsGiving.exe",
         "to": "ItsGiving.exe"
+      },
+      {
+        "from": "../scripts/setup_virtual_camera.ps1",
+        "to": "VirtualCameraSetup.ps1"
       }
     ],
     "win": {
