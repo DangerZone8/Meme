@@ -81,6 +81,7 @@ INNER_LIPS = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 3
 
 MODELS = {
     "face_landmarker.task": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    "face_detector.tflite": "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
     "hand_landmarker.task": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
     "pose_landmarker_lite.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 }
@@ -148,13 +149,18 @@ def build_detectors(model_paths):
     face = vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_landmarker.task"]),
         running_mode=vision.RunningMode.VIDEO, num_faces=8, output_face_blendshapes=True))
+    # FaceLandmarker does not expose its internal detector score. Run the lightweight
+    # FaceDetector alongside it so the HUD can show a real detector confidence.
+    score_face = vision.FaceDetector.create_from_options(vision.FaceDetectorOptions(
+        base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["face_detector.tflite"]),
+        running_mode=vision.RunningMode.VIDEO, min_detection_confidence=0.0))
     hand = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["hand_landmarker.task"]),
         running_mode=vision.RunningMode.VIDEO, num_hands=8))
     pose = vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_paths["pose_landmarker_lite.task"]),
         running_mode=vision.RunningMode.VIDEO, num_poses=8))
-    return face, hand, pose
+    return face, score_face, hand, pose
 
 
 class Clock:
@@ -756,15 +762,44 @@ def decide(face, hands, body, tongue, gesture, m):
     return None, d
 
 
-def draw_hud(img, shown, raw, d, face, hands, body, base, person_id, face_count):
+def match_face_confidences(faces, detections, width, height):
+    """Attach the nearest overlapping FaceDetector score to each FaceLandmarker face."""
+    boxes = []
+    for detection in detections:
+        box = detection.bounding_box
+        x0, y0 = float(box.origin_x), float(box.origin_y)
+        x1, y1 = x0 + float(box.width), y0 + float(box.height)
+        score = float(detection.categories[0].score) if detection.categories else None
+        boxes.append(((x0, y0, x1, y1), score))
+    for face in faces:
+        fx0, fy0, fx1, fy1 = face.box
+        best_iou, best_score = 0.0, None
+        for (dx0, dy0, dx1, dy1), score in boxes:
+            ix0, iy0 = max(fx0, dx0), max(fy0, dy0)
+            ix1, iy1 = min(fx1, dx1), min(fy1, dy1)
+            intersection = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+            face_area = max(0.0, fx1 - fx0) * max(0.0, fy1 - fy0)
+            det_area = max(0.0, dx1 - dx0) * max(0.0, dy1 - dy0)
+            union = face_area + det_area - intersection
+            iou = intersection / union if union > 0 else 0.0
+            if iou > best_iou:
+                best_iou, best_score = iou, score
+        face.detection_confidence = best_score if best_iou >= 0.03 else None
+    return sum(1 for _, score in boxes if score is not None)
+
+
+def draw_hud(img, shown, raw, d, face, hands, body, base, person_id, face_count,
+             detector_count=0):
     """Draw per-person tracking diagnostics on the local preview only."""
     if face:
         x0, y0, x1, y1 = face.box
+        confidence = getattr(face, "detection_confidence", None)
         colour = (60, 220, 80) if shown else (0, 190, 255)
         cv2.rectangle(img, (x0, y0), (x1, y1), colour, 2)
         selected = shown or "waiting"
         candidate = raw or "none"
-        label = f"ID {person_id} | meme: {selected} | raw: {candidate}"
+        confidence_label = f"{confidence * 100:.0f}%" if confidence is not None else "n/a"
+        label = f"ID {person_id} | det: {confidence_label} | meme: {selected} | raw: {candidate}"
         font = cv2.FONT_HERSHEY_SIMPLEX
         scale, thickness = 0.48, 1
         (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
@@ -779,7 +814,7 @@ def draw_hud(img, shown, raw, d, face, hands, body, base, person_id, face_count)
     if body and body.seen:
         for pt in np.vstack([body.shoulders, body.elbows]):
             cv2.circle(img, (int(pt[0]), int(pt[1])), 5, (255, 120, 0), -1)
-    panel = f"SCREENFILTER DEBUG  faces: {face_count}/8  |  tracks: {face_count}  |  D: hide overlay"
+    panel = f"SCREENFILTER DEBUG  detector: {detector_count}  |  landmarks: {face_count}/8  |  D: hide overlay"
     font = cv2.FONT_HERSHEY_SIMPLEX
     (tw, th), baseline = cv2.getTextSize(panel, font, 0.58, 2)
     cv2.rectangle(img, (6, 6), (min(img.shape[1] - 1, tw + 18), th + baseline + 16), (18, 18, 18), -1)
@@ -860,7 +895,7 @@ def main():
         except Exception as e:
             print(f"Virtual camera unavailable ({e}). Preview-only.")
 
-    face_det, hand_det, pose_det = build_detectors(model_paths)
+    face_det, score_face_det, hand_det, pose_det = build_detectors(model_paths)
     person_state = {}
     next_person_id = 0
     show_hud = True
@@ -889,6 +924,8 @@ def main():
                 Face(landmarks, fr.face_blendshapes[i] if i < len(fr.face_blendshapes) else None, W, H)
                 for i, landmarks in enumerate(fr.face_landmarks)
             ]
+            score_result = score_face_det.detect_for_video(mp_img, ts)
+            detector_count = match_face_confidences(faces, score_result.detections, W, H)
             # Stable left-to-right ordering keeps each person's state independent in a frame.
             faces.sort(key=lambda item: item.center[0])
             all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
@@ -961,10 +998,13 @@ def main():
                 face_count = len(shown_items)
                 for person_id, shown, raw, dbg, face, hands, body in shown_items:
                     draw_hud(preview, shown, raw, dbg, face, hands, body, base,
-                             person_id, face_count)
+                             person_id, face_count, detector_count)
                 if not shown_items:
-                    cv2.putText(preview, "SCREENFILTER DEBUG  faces: 0/8  |  no face landmarks detected",
-                                (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 0, 255), 2, cv2.LINE_AA)
+                    message = (f"SCREENFILTER DEBUG  detector: {detector_count}  |  landmarks: 0/8"
+                               if detector_count else
+                               "SCREENFILTER DEBUG  detector: 0  |  landmarks: 0/8  |  no face found")
+                    cv2.putText(preview, message, (12, 28), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.58, (0, 0, 255), 2, cv2.LINE_AA)
             else:
                 preview = frame
 
@@ -998,6 +1038,7 @@ def main():
     finally:
         cap.release()
         face_det.close()
+        score_face_det.close()
         hand_det.close()
         pose_det.close()
         if vcam:
