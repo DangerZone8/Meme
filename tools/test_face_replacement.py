@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, enhance_camera_frame, load_asset, match_face_confidences, replace_face)
+from its_giving_v2 import (POSES, Motion, assign_track_ids, associate_people, decide, draw_hud, draw_untracked_detections, enhance_camera_frame, load_asset, match_face_confidences, replace_face)
 
 
 class FaceReplacementTests(unittest.TestCase):
@@ -36,6 +36,16 @@ class FaceReplacementTests(unittest.TestCase):
         self.assertEqual(count, 2)
         self.assertAlmostEqual(face.detection_confidence, 0.873, places=3)
         self.assertAlmostEqual(second.detection_confidence, 0.421, places=3)
+
+    def test_detector_only_face_is_marked_when_landmarks_are_missing(self):
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        detection = SimpleNamespace(
+            bounding_box=SimpleNamespace(origin_x=30, origin_y=40, width=80, height=90),
+            categories=[SimpleNamespace(score=0.612)],
+        )
+        draw_untracked_detections(frame, [detection], [])
+        self.assertGreater(int(np.count_nonzero(frame)), 0)
+        self.assertTrue(np.any(np.all(frame[40, 30:111] == (0, 120, 255), axis=1)))
 
     def test_transparent_meme_pixels_never_reveal_camera_frame(self):
         original = np.full((240, 320, 3), (10, 20, 30), dtype=np.uint8)
