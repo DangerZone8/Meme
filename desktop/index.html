@@ -39,7 +39,7 @@ button,select{font:inherit}button:focus-visible,select:focus-visible{outline:2px
         <div class="field"><label for="camera">Input camera</label><select id="camera"><option value="0">Camera 0</option><option value="1">Camera 1</option><option value="2">Camera 2</option></select></div>
         <div class="field"><label for="size">Output quality</label><select id="size"><option value="1280x720">HD · 720p</option><option value="640x480">Standard · 480p</option></select></div>
       </div>
-      <div class="actions"><button class="btn primary" id="start">Start camera</button><button class="btn" id="stop" disabled>Stop</button><button class="btn" id="obs">Camera setup</button></div>
+      <div class="actions"><button class="btn primary" id="start">Start camera</button><button class="btn" id="stop" disabled>Stop</button><button class="btn" id="obs">Set up virtual camera</button></div>
       <p class="note">Camera access starts only after you press Start. The preview window's close button exits the camera engine; Q remains available as a keyboard shortcut.</p>
       <p class="note"><span class="pill"><i></i> Multi-person tracking · up to 8 faces</span></p>
     </section>
@@ -48,9 +48,14 @@ button,select{font:inherit}button:focus-visible,select:focus-visible{outline:2px
       <div class="steps">
         <div class="step"><span class="step-no">01</span><div><strong>Start the reaction camera</strong><p>Allow Windows camera access when prompted.</p></div></div>
         <div class="step"><span class="step-no">02</span><div><strong>Open your meeting settings</strong><p>Go to the Video or Camera section in your meeting app.</p></div></div>
-        <div class="step"><span class="step-no">03</span><div><strong>Select OBS Virtual Camera</strong><p>Choose it as the camera source for your call.</p></div></div>
+        <div class="step"><span class="step-no">03</span><div><strong>Select ScreenFilter's virtual camera</strong><p>Choose OBS Virtual Camera in the camera picker. ScreenFilter handles the driver setup for you.</p></div></div>
       </div>
-      <p class="note">Install OBS Studio once to register its Virtual Camera device. Close OBS before starting ScreenFilter. Do not also start OBS Virtual Camera inside OBS while this app is using it.</p>
+      <div class="steps" style="margin-top:16px">
+        <div class="step"><span class="step-no">Z</span><div><strong>Zoom</strong><p>Settings → Video & effects → Camera → OBS Virtual Camera.</p></div></div>
+        <div class="step"><span class="step-no">G</span><div><strong>Google Meet</strong><p>More options → Settings → Video → Camera → OBS Virtual Camera.</p></div></div>
+        <div class="step"><span class="step-no">T</span><div><strong>Microsoft Teams</strong><p>Settings → Devices → Camera → OBS Virtual Camera. You can also choose it before joining.</p></div></div>
+      </div>
+      <p class="note">First use: click “Set up virtual camera”. ScreenFilter installs and registers the camera components after Windows administrator approval. OBS Studio is used only for its virtual-camera driver; you do not need to open or configure OBS. Restart ScreenFilter and your meeting app after setup. Menu names can vary slightly by app version.</p>
     </section>
   </div>
   <section class="card log-card"><div class="log-head"><h2>Engine activity</h2><span>LOCAL STATUS OUTPUT</span></div><div id="logs">Waiting for the reaction engine…</div></section>
