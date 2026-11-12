@@ -115,17 +115,27 @@ class FaceReplacementTests(unittest.TestCase):
         }
         self.assertEqual(decide(face, [], None, 0.0, 0.0, measurements)[0], 'shocked')
 
-    def test_head_movement_and_clap_are_detected(self):
+    def test_head_movement_and_clap_are_detected_without_stationary_false_positives(self):
         motion = Motion()
         face_a = SimpleNamespace(w=100.0, center=(100.0, 100.0))
+        face_jitter = SimpleNamespace(w=100.0, center=(101.0, 102.0))
         face_b = SimpleNamespace(w=100.0, center=(100.0, 106.0))
         motion.update([], face_a)
+        motion.update([], face_jitter)
+        self.assertFalse(motion.nod)
         motion.update([], face_b)
         self.assertTrue(motion.nod)
-        hands = [SimpleNamespace(palm=np.array((90.0, 120.0))),
-                 SimpleNamespace(palm=np.array((120.0, 120.0)))]
-        motion.update(hands, face_b)
+
+        apart = [SimpleNamespace(palm=np.array((70.0, 120.0))),
+                 SimpleNamespace(palm=np.array((140.0, 120.0)))]
+        together = [SimpleNamespace(palm=np.array((90.0, 120.0))),
+                    SimpleNamespace(palm=np.array((120.0, 120.0)))]
+        motion.update(apart, face_b)
+        self.assertFalse(motion.clap)
+        motion.update(together, face_b)
         self.assertTrue(motion.clap)
+        motion.update(together, face_b)
+        self.assertFalse(motion.clap)
     def test_decide_accepts_older_measurement_payloads(self):
         face = SimpleNamespace(
             w=80.0, center=(100.0, 100.0), nose=(100.0, 90.0),
