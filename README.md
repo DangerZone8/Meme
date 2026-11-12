@@ -24,6 +24,35 @@ The Release exists as the binary-hosting mechanism, but users clicking the websi
 
 The synthetic OBS CI test verifies that the backend opens and accepts frames. It does not prove that a physical webcam works, that a meeting app receives the stream, or that face tracking behaves correctly on a person's live camera. Those still require a real Windows webcam test.
 
+## Optional Memento-54K video-understanding evaluation
+
+Memento-54K is an optional offline evaluation dataset for timestamped, long-video question/answer understanding. It is **not** part of ScreenFilter's live webcam, expression, gesture, or meme-selection pipeline. Nothing is downloaded or bundled with the app unless a developer explicitly runs the evaluation tools.
+
+Install the separate optional dependency and download only the annotation JSONL:
+
+```bash
+python -m pip install -r requirements-memento-eval.txt
+python tools/memento_eval.py download --split test --cache-dir .cache/memento-54k
+```
+
+The training split can be downloaded explicitly with `--split train`. Dataset files are cached outside the application. The downloader retrieves annotations only; it does **not** fetch Ego4D videos or visual features. Any video access must be obtained independently through Ego4D and comply with its terms.
+
+The evaluation harness accepts a JSONL file of model predictions. Each prediction row must contain `video_uid`, `sample_index` (zero-based row position in the downloaded test JSONL), `turn_index` (zero-based assistant-turn index within that sample), and `predicted_text`. `predicted_time` (seconds from video start) is optional:
+
+```json
+{"video_uid":"<test-video-uid>","sample_index":0,"turn_index":0,"predicted_text":"A person enters the room.","predicted_time":12.5}
+```
+
+Run the separate test-split evaluator:
+
+```bash
+python tools/memento_eval.py evaluate --annotations path/to/test.jsonl --predictions path/to/predictions.jsonl --timing-tolerance 2.0
+```
+
+It reports coverage, normalized exact match, token F1, temporal accuracy within the selected tolerance, and mean absolute timestamp error. These lexical metrics are diagnostics, not semantic-quality judgments. The test split is reserved for evaluation; do not train on it or deduplicate its samples by video UID. Pin a Hugging Face revision with `download --revision <commit>` for reproducible runs.
+
+**Attribution and terms:** Memento annotation text and dataset organization are released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Attribute *Memento: Toward an All-Day Proactive Assistant for Ultra-Long Streaming Video* ([paper](https://openreview.net/forum?id=FtdbdoGbk3)) and the [Memento-54K dataset](https://huggingface.co/datasets/liarzone/Memento-54K). Ego4D source videos are not included and remain subject to their own access and use terms; CC BY 4.0 for annotations does not grant rights to the videos, people, or third-party content depicted in them. See the [Ego4D access documentation](https://ego4d-data.org/docs/start-here/).
+
 ## Local Python setup
 
 Use Python 3.11 or 3.12:
