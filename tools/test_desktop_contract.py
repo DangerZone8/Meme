@@ -111,6 +111,17 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertIn("ItsGiving-Desktop-0.3.0-Windows.exe", self.workflow)
         self.assertIn('res.status(302).end()', self.api)
 
+    def test_camera_performance_benchmark_and_lightweight_quality_probe(self):
+        engine = read("its_giving_v2.py")
+        self.assertIn('"--perf-stats"', engine)
+        self.assertIn('"--benchmark-seconds"', engine)
+        self.assertIn("avg_fps=", engine)
+        self.assertIn("avg_read_to_preview_ms=", engine)
+        self.assertIn("p95_frame_ms=", engine)
+        self.assertIn("probe_w = min(160, frame.shape[1])", engine)
+        self.assertIn("cv2.Laplacian(gray, cv2.CV_16S)", engine)
+        self.assertNotIn("cv2.Laplacian(gray, cv2.CV_64F)", engine)
+
     def test_vercel_ignores_preview_deployments_but_builds_main(self):
         command = self.vercel.get("ignoreCommand", "")
         self.assertIn("VERCEL_GIT_COMMIT_REF", command)

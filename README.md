@@ -39,6 +39,18 @@ python its_giving_v2.py
 
 The Windows CI build bundles the MediaPipe model files into the executable. For a local source run, the engine downloads missing model files on first launch.
 
+## Camera performance benchmark
+
+Run a 30-second benchmark with the same camera resolution you normally use:
+
+```bash
+python its_giving_v2.py --no-vcam --size 1280x720 --benchmark-seconds 30 --perf-stats
+```
+
+Then repeat without `--no-vcam` to include OBS Virtual Camera output. The final `BENCHMARK` line reports average loop FPS, capture-read time, MediaPipe inference time, render time, output time, read-to-preview processing time, and p95 frame time. The five-second `PERF` lines show rolling values. Try `--size 640x480` as a comparison, without changing gesture thresholds. The read-to-preview value is a software processing estimate, not sensor-to-screen latency; true camera latency needs an external high-speed-camera measurement.
+
+The engine now makes its image-quality decision from a small 160-pixel-wide probe while applying any correction to the full-resolution frame. This avoids running a full-resolution 64-bit Laplacian on every frame.
+
 ## Desktop shell
 
 See [desktop/README.md](desktop/README.md) for Electron development and packaging details.
