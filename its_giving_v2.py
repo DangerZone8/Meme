@@ -478,13 +478,19 @@ def replace_face(frame, sprite, face, scale=1.24):
 
 
 def enhance_camera_frame(frame):
-    """Adaptive cleanup for dim, low-contrast or mildly soft webcam frames."""
+    """Adaptive cleanup using a small quality probe to avoid full-frame CPU scans."""
     if frame is None or frame.size == 0:
         return frame
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # Quality decisions do not need a full-resolution Laplacian. A 160px-wide
+    # probe cuts the per-frame analysis cost substantially while all actual
+    # corrections still apply to the original-resolution image.
+    probe_w = min(160, frame.shape[1])
+    probe_h = max(1, int(round(frame.shape[0] * probe_w / frame.shape[1])))
+    probe = cv2.resize(frame, (probe_w, probe_h), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(probe, cv2.COLOR_BGR2GRAY)
     brightness = float(np.mean(gray))
     contrast = float(np.std(gray))
-    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_16S).var())
     result = frame
 
     # Lift underexposed frames without aggressively washing out normal lighting.
@@ -906,6 +912,9 @@ def main():
     ap.add_argument("--skip-check", action="store_true", help="skip the MediaPipe startup check")
     ap.add_argument("--size", default="1280x720", help="capture size, e.g. 1280x720 or 640x480 (lower = faster)")
     ap.add_argument("--no-flip", action="store_true", help="don't mirror the image")
+    ap.add_argument("--perf-stats", action="store_true", help="print rolling FPS and camera/render stage timings")
+    ap.add_argument("--benchmark-seconds", type=float, default=0.0,
+                    help="run a timed camera benchmark, then print stage timing summary and exit")
     args = ap.parse_args()
 
     calib_path = os.path.join(USER_DATA_DIR, CALIB_FILE)
@@ -984,11 +993,19 @@ def main():
     frame_index = 0
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
+    perf_samples = []
+    perf_started = time.perf_counter()
+    perf_last_report = perf_started
+    benchmark_started = perf_started
     print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test a pose")
+    if args.benchmark_seconds > 0:
+        print(f"Benchmark: {args.benchmark_seconds:.1f}s; report includes read-to-preview processing latency, not sensor exposure latency.")
 
     try:
         while True:
+            loop_started = time.perf_counter()
             ok, frame = cap.read()
+            read_ms = (time.perf_counter() - loop_started) * 1000.0
             if not ok:
                 print("Camera stopped returning frames.")
                 break
@@ -999,6 +1016,7 @@ def main():
                 frame = cv2.flip(frame, 1)
             frame = enhance_camera_frame(frame)
 
+            inference_started = time.perf_counter()
             ts = clock.next()
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             fr = face_det.detect_for_video(mp_img, ts)
@@ -1018,6 +1036,8 @@ def main():
                 detector_count = match_face_confidences(faces, score_detections, W, H)
             else:
                 detector_count = 0
+            inference_ms = (time.perf_counter() - inference_started) * 1000.0
+            render_started = time.perf_counter()
             # Stable left-to-right ordering keeps each person's state independent in a frame.
             faces.sort(key=lambda item: item.center[0])
             all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
@@ -1102,12 +1122,30 @@ def main():
 
             # OBS receives only the clean processed camera frame. Diagnostic
             # landmarks/dots are drawn on a separate preview copy, never output.
+            render_ms = (time.perf_counter() - render_started) * 1000.0
+            output_started = time.perf_counter()
             if vcam:
                 vcam.send(frame)
                 vcam.sleep_until_next_frame()
 
             cv2.imshow(window, preview)
             key = cv2.waitKey(1) & 0xFF
+            output_ms = (time.perf_counter() - output_started) * 1000.0
+            loop_ms = (time.perf_counter() - loop_started) * 1000.0
+            perf_samples.append((read_ms, inference_ms, render_ms, output_ms, loop_ms))
+            if len(perf_samples) > 150:
+                perf_samples.pop(0)
+            now_perf = time.perf_counter()
+            if args.perf_stats and now_perf - perf_last_report >= 5.0:
+                count = len(perf_samples)
+                means = [sum(sample[i] for sample in perf_samples) / count for i in range(5)]
+                fps = 1000.0 / max(means[4], 0.001)
+                print(f"PERF fps={fps:.1f} read={means[0]:.1f}ms infer={means[1]:.1f}ms "
+                      f"render={means[2]:.1f}ms output={means[3]:.1f}ms "
+                      f"read-to-preview={means[0] + means[1] + means[2] + means[3]:.1f}ms")
+                perf_last_report = now_perf
+            if args.benchmark_seconds > 0 and now_perf - benchmark_started >= args.benchmark_seconds:
+                break
             if key == ord("q"):
                 break
             # Closing the OpenCV preview with its title-bar X exits the engine too.
@@ -1128,6 +1166,16 @@ def main():
             elif 0 < key < 256 and chr(key) in TEST_KEYS:
                 forced, forced_until = POSES[TEST_KEYS.index(chr(key))], now + 2.0
     finally:
+        if perf_samples:
+            count = len(perf_samples)
+            means = [sum(sample[i] for sample in perf_samples) / count for i in range(5)]
+            ordered = sorted(sample[4] for sample in perf_samples)
+            p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
+            print(f"BENCHMARK frames={count} avg_fps={1000.0 / max(means[4], 0.001):.1f} "
+                  f"avg_read_ms={means[0]:.1f} avg_inference_ms={means[1]:.1f} "
+                  f"avg_render_ms={means[2]:.1f} avg_output_ms={means[3]:.1f} "
+                  f"avg_read_to_preview_ms={means[0] + means[1] + means[2] + means[3]:.1f} "
+                  f"p95_frame_ms={p95:.1f}")
         cap.release()
         face_det.close()
         score_face_det.close()
