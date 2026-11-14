@@ -919,6 +919,10 @@ def main():
         preflight(model_paths["face_landmarker.task"])
 
     cap = cv2.VideoCapture(args.camera)
+    # Keep only the newest camera frame; a deep driver queue turns slow inference
+    # into visibly delayed video instead of dropping stale frames.
+    if cap.isOpened():
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     if cap.isOpened() and "x" in args.size:
         w, h = args.size.lower().split("x")
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(w))
@@ -973,6 +977,11 @@ def main():
     person_state = {}
     next_person_id = 0
     show_hud = True
+    # The confidence detector duplicates work already done by FaceLandmarker.
+    # Run it only for the diagnostic HUD and at a reduced cadence.
+    score_detections = []
+    score_refresh_interval = 6
+    frame_index = 0
     forced, forced_until = None, 0.0
     sm_center, sm_h = np.array([W / 2, H / 2], np.float32), H * 0.45
     print("Running. Focus the preview window: q quit, d HUD, c recalibrate, 1-9 0 - = [ ] test a pose")
@@ -983,6 +992,7 @@ def main():
             if not ok:
                 print("Camera stopped returning frames.")
                 break
+            frame_index += 1
             if frame.shape[0] != H or frame.shape[1] != W:
                 frame = cv2.resize(frame, (W, H))
             if not args.no_flip:
@@ -998,8 +1008,16 @@ def main():
                 Face(landmarks, fr.face_blendshapes[i] if i < len(fr.face_blendshapes) else None, W, H)
                 for i, landmarks in enumerate(fr.face_landmarks)
             ]
-            score_result = score_face_det.detect_for_video(mp_img, ts)
-            detector_count = match_face_confidences(faces, score_result.detections, W, H)
+            # A second face detector is diagnostic-only. Calling it on every
+            # frame nearly doubles face-detection work; refresh it every sixth
+            # frame while the HUD is visible and reuse its last result between
+            # refreshes. The primary face/hand/pose inference remains per-frame.
+            if show_hud and frame_index % score_refresh_interval == 0:
+                score_result = score_face_det.detect_for_video(mp_img, ts)
+                score_detections = score_result.detections
+                detector_count = match_face_confidences(faces, score_detections, W, H)
+            else:
+                detector_count = 0
             # Stable left-to-right ordering keeps each person's state independent in a frame.
             faces.sort(key=lambda item: item.center[0])
             all_hands = [Hand(h, W, H) for h in hr.hand_landmarks]
@@ -1069,7 +1087,7 @@ def main():
             if show_hud:
                 preview = frame.copy()
                 face_count = len(shown_items)
-                draw_untracked_detections(preview, score_result.detections, faces)
+                draw_untracked_detections(preview, score_detections, faces)
                 for person_id, shown, raw, dbg, face, hands, body in shown_items:
                     draw_hud(preview, shown, raw, dbg, face, hands, body, base,
                              person_id, face_count, detector_count)
